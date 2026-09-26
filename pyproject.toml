@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kogwistar-agent-suite"
+version = "0.1.0"
+description = "Installable tools, plugins, hooks, MCP descriptors, skills, and profiles for Kogwistar agents"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["kogwistar>=0.6.0"]
+
+[project.scripts]
+kogwistar-agent-suite = "kogwistar_agent_suite.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
