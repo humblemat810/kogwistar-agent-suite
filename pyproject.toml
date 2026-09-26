@@ -15,6 +15,11 @@ kogwistar-agent-suite = "kogwistar_agent_suite.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+github = ["httpx>=0.28"]
+browser = ["playwright>=1.45,<2"]
+slack = ["slack-sdk>=3.0"]
+atlassian = ["httpx>=0.28"]
+all-adapters = ["httpx>=0.28", "playwright>=1.45,<2", "slack-sdk>=3.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1,6 +1,15 @@
 """Concrete Kogwistar agent integrations."""
 
 from .catalog import CapabilityCatalog, CapabilityDescriptor, CapabilityKind
+from .adapters import (
+    AtlassianAdapter,
+    BrowserAdapter,
+    GitHubAdapter,
+    LlmWikiAdapter,
+    SlackAdapter,
+    adapter_descriptors,
+    register_optional_adapter,
+)
 from .hooks import HookBundle, run_hooks
 from .mcp import McpCapability, McpCatalog
 from .plugins import PluginManifest, PluginRegistry
@@ -10,8 +19,10 @@ from .tools import LocalWorkspaceTool, ToolCall, ToolDescriptor, ToolRegistry
 
 __all__ = [
     "CapabilityCatalog", "CapabilityDescriptor", "CapabilityKind",
+    "AtlassianAdapter", "BrowserAdapter", "GitHubAdapter", "LlmWikiAdapter",
     "DeveloperPack", "HookBundle", "LocalWorkspaceTool", "McpCapability",
     "McpCatalog", "PluginManifest", "PluginRegistry", "SkillDescriptor",
     "ToolCall", "ToolDescriptor", "ToolRegistry", "developer_profile",
-    "developer_skills", "run_hooks",
+    "developer_skills", "run_hooks", "SlackAdapter", "adapter_descriptors",
+    "register_optional_adapter",
 ]

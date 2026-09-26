@@ -25,3 +25,17 @@ kogwistar-agent-suite --workspace . read README.md
 External MCP invocation, shell mutation, GitHub writes, and model providers
 remain separate plugins. They must pass host ACL, approval, budget, and
 provenance checks before being added.
+
+Optional adapter extras are independent:
+
+```text
+pip install -e ".[github]"
+pip install -e ".[browser]"
+pip install -e ".[slack]"
+pip install -e ".[atlassian]"
+```
+
+The adapters accept injected clients, so deterministic tests and deployments
+may use an internal gateway or local fake without installing a vendor SDK.
+No adapter is auto-discovered or compulsory. LLM-Wiki integration reuses the
+core provider-neutral ingestion contract and remains optional.

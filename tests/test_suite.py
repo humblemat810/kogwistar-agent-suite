@@ -3,18 +3,51 @@ from pathlib import Path
 import pytest
 
 from kogwistar_agent_suite import (
+    AtlassianAdapter,
+    BrowserAdapter,
+    GitHubAdapter,
     HookBundle,
+    LlmWikiAdapter,
     McpCapability,
     McpCatalog,
     PluginManifest,
     PluginRegistry,
+    SlackAdapter,
     ToolCall,
     developer_profile,
     run_hooks,
 )
+from kogwistar_agent_suite.adapters import adapter_descriptors, register_optional_adapter
 from kogwistar_agent_suite.cli import main
 
 
+class FakeTransport:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict[str, object]]] = []
+        self.closed = False
+
+    def request(self, method: str, path: str, *, params=None, json=None):
+        self.calls.append((method, path, {"params": params, "json": json}))
+        if path == "/search/issues":
+            return {"items": [{"number": 1}, {"number": 2}]}
+        return {"ok": True, "path": path}
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class FakeSlack:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def search_messages(self, *, query: str, limit: int):
+        return {"query": query, "limit": limit}
+
+    def send_message(self, *, channel: str, text: str):
+        return {"channel": channel, "text": text}
+
+    def close(self) -> None:
+        self.closed = True
 def test_developer_pack_searches_skills_and_tools(tmp_path: Path) -> None:
     pack = developer_profile(str(tmp_path))
     results = pack.catalog.search(
@@ -102,6 +135,43 @@ def test_fail_closed_hook_does_not_hide_errors() -> None:
 
     with pytest.raises(RuntimeError, match="hook failure"):
         run_hooks((HookBundle("security", (broken,)),), {})
+
+
+def test_optional_adapters_are_acl_and_approval_gated() -> None:
+    transport = FakeTransport()
+    github = GitHubAdapter(transport, repository="example/project")
+    assert github.search_issues("bug", effective_capabilities=frozenset({"github.read"})) == ({"number": 1}, {"number": 2})
+    with pytest.raises(PermissionError):
+        github.search_issues("bug", effective_capabilities=frozenset())
+    with pytest.raises(PermissionError):
+        github.create_issue("title", "body", effective_capabilities=frozenset({"github.write"}), approve=None)
+    assert github.create_issue(
+        "title",
+        "body",
+        effective_capabilities=frozenset({"github.write"}),
+        approve=lambda action, request: action == "github.create_issue" and request["repository"] == "example/project",
+    )["ok"] is True
+
+    browser = BrowserAdapter(lambda _url: "abcdef", max_chars=3)
+    assert browser.fetch("https://example.test", effective_capabilities=frozenset({"browser.read"})) == "abc"
+    slack_client = FakeSlack()
+    slack = SlackAdapter(slack_client)
+    assert slack.search("incident", effective_capabilities=frozenset({"slack.read"}))["limit"] == 20
+    with pytest.raises(PermissionError):
+        slack.send("#ops", "hello", effective_capabilities=frozenset({"slack.write"}), approve=None)
+
+    atlassian = AtlassianAdapter(transport, site="example.atlassian.net")
+    assert atlassian.search_jira("project = KOG", effective_capabilities=frozenset({"atlassian.read"}))["ok"] is True
+    llm_wiki = LlmWikiAdapter(lambda source: source, authorize=lambda _source: True)
+    assert llm_wiki.descriptors()[0].capability_id == "tool:llm_wiki.ingest_skill"
+
+    registry = PluginRegistry()
+    register_optional_adapter(registry, github)
+    register_optional_adapter(registry, slack)
+    assert len(adapter_descriptors((github, browser, slack, atlassian, llm_wiki))) == 8
+    registry.close()
+    assert transport.closed is True
+    assert slack_client.closed is True
 
 
 def test_cli_profile_is_deterministic(capsys: pytest.CaptureFixture[str]) -> None:
