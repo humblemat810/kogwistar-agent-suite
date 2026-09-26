@@ -2,7 +2,11 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from kogwistar.engine_core.engine import GraphKnowledgeEngine
+from kogwistar.engine_core.in_memory_backend import build_in_memory_backend
 from kogwistar.agent import parse_skill_text
+from kogwistar.runtime import MappingStepResolver, WorkflowRuntime
+from kogwistar.runtime.models import RunSuccess
 
 from kogwistar_agent_suite import (
     AtlassianAdapter,
@@ -24,6 +28,14 @@ from kogwistar_agent_suite import (
 )
 from kogwistar_agent_suite.adapters import adapter_descriptors, register_optional_adapter
 from kogwistar_agent_suite.cli import main
+
+
+pytestmark = pytest.mark.ci
+
+
+class ZeroEmbedding:
+    def __call__(self, texts):
+        return [[0.0, 0.0, 0.0, 0.0] for _ in texts]
 
 
 class FakeTransport:
@@ -272,6 +284,74 @@ def test_developer_pack_binds_async_core_harness(tmp_path: Path) -> None:
         "shell.test",
         "workspace.read",
     )
+
+
+def test_developer_pack_executes_plan_in_core_runtime_with_fake_steps(tmp_path: Path) -> None:
+    pack = developer_profile(str(tmp_path))
+    design = pack.workflow_design()
+    embedding = ZeroEmbedding()
+    engines = (
+        GraphKnowledgeEngine(
+            persist_directory=str(tmp_path / "workflow"),
+            kg_graph_type="workflow",
+            embedding_function=embedding,
+            backend_factory=build_in_memory_backend,
+        ),
+        GraphKnowledgeEngine(
+            persist_directory=str(tmp_path / "conversation"),
+            kg_graph_type="conversation",
+            embedding_function=embedding,
+            backend_factory=build_in_memory_backend,
+        ),
+    )
+    try:
+        for node in design.nodes:
+            engines[0].write.add_node(node)
+        for edge in design.edges:
+            engines[0].write.add_edge(edge)
+
+        resolver = MappingStepResolver()
+        next_by_op = {
+            "agent.observe": "agent.plan",
+            "agent.plan": "agent.approve",
+            "agent.approve": "agent.execute",
+            "agent.execute": "agent.done",
+        }
+        for node in design.nodes:
+            operation = node.op
+
+            @resolver.register(operation)
+            def _step(ctx, operation=operation):
+                target = next_by_op.get(operation)
+                return RunSuccess(
+                    state_update=[],
+                    _route_next=[target] if target else [],
+                )
+
+        runtime = WorkflowRuntime(
+            workflow_engine=engines[0],
+            conversation_engine=engines[1],
+            step_resolver=resolver,
+            predicate_registry={
+                "approved": lambda _info, _state, _result: True,
+                "rejected": lambda _info, state, _result: state.get("approval") != "approved",
+            },
+            checkpoint_every_n_steps=1,
+        )
+        result = pack.make_harness(
+            runtime,
+            caller_capabilities=("workspace.read", "shell.test", "git.read"),
+        ).run(
+            initial_state={"_deps": {}, "approval": "approved"},
+            conversation_id="suite-runtime-smoke",
+            turn_node_id="suite-runtime-smoke-turn",
+            run_id="suite-runtime-smoke-run",
+        )
+        assert result.status == "succeeded"
+    finally:
+        pack.close()
+        for engine in engines:
+            engine.close()
 
 
 def test_acl_filters_tool_calls(tmp_path: Path) -> None:

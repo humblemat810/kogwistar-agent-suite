@@ -8,6 +8,10 @@ compression, memory, knowledge, wisdom, and durable skill projections.
 
 - `DeveloperPack.make_harness()` binds `AgentHarness` or `AsyncAgentHarness`;
   it does not create a second runtime.
+- `DeveloperPack.workflow_design()` returns a graph artifact only. The host
+  must register/validate that artifact and supply resolver handlers to the
+  existing `WorkflowRuntime`; the suite does not auto-install workflow
+  authority.
 - Profile authority is intersected with caller capabilities by core ACL rules.
 - Plan and goal are ordinary core workflow designs, selected by workflow ID.
 - Optional adapters expose descriptors only until an explicitly authorized call.
@@ -23,6 +27,11 @@ This package does not implement a runtime, scheduler, event store, memory
 database, wisdom lifecycle, steering queue, compression engine, subagent
 protocol, or durable catalog authority. Hosts must use the corresponding core
 APIs for those semantics.
+
+Hooks are explicit composition helpers. `DeveloperPack.hooks` does not cause
+callbacks to run implicitly; a host or ordinary workflow step must call
+`run_hooks()` at its chosen lifecycle point. This keeps hook policy visible
+and below the core runtime's ACL and budget guards.
 
 The local catalog is an in-memory discovery composition. Durable graph-native
 groups, scopes, aliases, versions, approval state, provenance, and rebuildable
