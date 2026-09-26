@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -92,6 +93,7 @@ def test_optional_semantic_ranker_runs_after_acl_and_falls_back(tmp_path: Path) 
         return {item.capability_id: 10.0 for item in candidates if item.capability_id.startswith("skill:")}
 
     pack = developer_profile(str(tmp_path), semantic_ranker=rank)
+    pack.catalog.set_semantic_ready("skill:build-workflow-from-request")
     result = pack.search_ranked(
         "anything",
         allowed_capabilities=frozenset({"workspace.read"}),
@@ -110,6 +112,23 @@ def test_optional_semantic_ranker_runs_after_acl_and_falls_back(tmp_path: Path) 
         mode="semantic",
     )
     assert fallback[0].match == "bm25"
+
+
+def test_semantic_ranker_excludes_pending_projection(tmp_path: Path) -> None:
+    seen: list[tuple[str, ...]] = []
+
+    def rank(_query: str, candidates) -> dict[str, float]:
+        seen.append(tuple(item.capability_id for item in candidates))
+        return {item.capability_id: 1.0 for item in candidates}
+
+    pack = developer_profile(str(tmp_path), semantic_ranker=rank)
+    result = pack.search_ranked(
+        "workspace",
+        allowed_capabilities=frozenset({"workspace.read"}),
+        mode="semantic",
+    )
+    assert result[0].match == "bm25"
+    assert seen == [()]
 
 
 def test_workspace_search_is_bounded_and_deterministic(tmp_path: Path) -> None:
@@ -217,6 +236,42 @@ def test_developer_pack_composes_core_agent_profile(tmp_path: Path) -> None:
     ) == ("shell.test", "workspace.read")
     assert pack.workflow_design().workflow_id == "agent.plan.v1"
     assert pack.workflow_design("goal").workflow_id == "agent.goal.v1"
+
+
+def test_developer_pack_binds_core_harness_without_new_runtime(tmp_path: Path) -> None:
+    class FakeRuntime:
+        def run(self, **kwargs):
+            return kwargs
+
+    pack = developer_profile(str(tmp_path))
+    harness = pack.make_harness(
+        FakeRuntime(),
+        caller_capabilities=("workspace.read", "shell.test", "git.read"),
+    )
+    result = harness.run(initial_state={"request": "inspect"}, conversation_id="c1")
+    assert result["workflow_id"] == "agent.plan.v1"
+    assert result["_authority_context"]["principal_id"] == "kogwistar.developer"
+
+
+def test_developer_pack_binds_async_core_harness(tmp_path: Path) -> None:
+    class FakeAsyncRuntime:
+        async def run(self, **kwargs):
+            return kwargs
+
+    pack = developer_profile(str(tmp_path))
+    harness = pack.make_async_harness(
+        FakeAsyncRuntime(),
+        caller_capabilities=("workspace.read", "shell.test", "git.read"),
+    )
+    result = asyncio.run(
+        harness.run(initial_state={"request": "inspect"}, conversation_id="c1")
+    )
+    assert result["workflow_id"] == "agent.plan.v1"
+    assert result["_authority_context"]["effective_capabilities"] == (
+        "git.read",
+        "shell.test",
+        "workspace.read",
+    )
 
 
 def test_acl_filters_tool_calls(tmp_path: Path) -> None:
