@@ -15,14 +15,14 @@ from .mcp import McpCapability, McpCatalog
 from .plugins import PluginManifest, PluginRegistry
 from .profiles import DeveloperPack, developer_profile
 from .skills import SkillDescriptor, developer_skills
-from .tools import LocalWorkspaceTool, ToolCall, ToolDescriptor, ToolRegistry
+from .tools import CommandResult, GitReadTool, LocalWorkspaceTool, ToolCall, ToolDescriptor, ToolRegistry
 
 __all__ = [
     "CapabilityCatalog", "CapabilityDescriptor", "CapabilityKind",
     "AtlassianAdapter", "BrowserAdapter", "GitHubAdapter", "LlmWikiAdapter",
     "DeveloperPack", "HookBundle", "LocalWorkspaceTool", "McpCapability",
     "McpCatalog", "PluginManifest", "PluginRegistry", "SkillDescriptor",
-    "ToolCall", "ToolDescriptor", "ToolRegistry", "developer_profile",
+    "CommandResult", "GitReadTool", "ToolCall", "ToolDescriptor", "ToolRegistry", "developer_profile",
     "developer_skills", "run_hooks", "SlackAdapter", "adapter_descriptors",
     "register_optional_adapter",
 ]

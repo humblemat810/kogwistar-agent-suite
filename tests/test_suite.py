@@ -15,6 +15,7 @@ from kogwistar_agent_suite import (
     SlackAdapter,
     ToolCall,
     developer_profile,
+    GitReadTool,
     run_hooks,
 )
 from kogwistar_agent_suite.adapters import adapter_descriptors, register_optional_adapter
@@ -48,6 +49,8 @@ class FakeSlack:
 
     def close(self) -> None:
         self.closed = True
+
+
 def test_developer_pack_searches_skills_and_tools(tmp_path: Path) -> None:
     pack = developer_profile(str(tmp_path))
     results = pack.catalog.search(
@@ -55,6 +58,62 @@ def test_developer_pack_searches_skills_and_tools(tmp_path: Path) -> None:
         allowed_capabilities=frozenset({"workspace.read", "shell.test"}),
     )
     assert results[0].capability_id == "skill:diagnose-test-failure"
+
+
+def test_workspace_search_is_bounded_and_deterministic(tmp_path: Path) -> None:
+    (tmp_path / "b.txt").write_text("needle second\n", encoding="utf-8")
+    (tmp_path / "a.txt").write_text("needle first\n", encoding="utf-8")
+    pack = developer_profile(str(tmp_path))
+    result = pack.tools.call(
+        ToolCall("workspace.search_text", {"query": "needle"}),
+        allowed_capabilities=frozenset({"workspace.read"}),
+    )
+    assert [item["path"] for item in result] == ["a.txt", "b.txt"]
+    with pytest.raises(PermissionError):
+        pack.tools.call(
+            ToolCall("workspace.search_text", {"query": "needle", "relative_path": ".."}),
+            allowed_capabilities=frozenset({"workspace.read"}),
+        )
+    with pytest.raises(ValueError):
+        pack.tools.call(
+            ToolCall("workspace.search_text", {"query": "needle", "max_matches": 0}),
+            allowed_capabilities=frozenset({"workspace.read"}),
+        )
+
+
+def test_git_read_tools_are_read_only_and_bounded() -> None:
+    tool = GitReadTool(Path(__file__).parents[1])
+    assert tool.status().returncode == 0
+    assert tool.diff_stat().returncode == 0
+    assert tool.log(1).returncode == 0
+    with pytest.raises(ValueError):
+        tool.log(101)
+
+
+def test_optional_adapter_composes_into_pack_and_closes(tmp_path: Path) -> None:
+    transport = FakeTransport()
+    pack = developer_profile(
+        str(tmp_path),
+        adapters=(GitHubAdapter(transport, repository="example/project"),),
+    )
+    assert pack.catalog.get("tool:github.search_issues").provider_id == "kogwistar-agent-suite.github"
+    assert len(pack.plugins) == 2
+    pack.close()
+    assert transport.closed is True
+
+
+def test_useful_agent_skills_are_discoverable(tmp_path: Path) -> None:
+    pack = developer_profile(str(tmp_path))
+    ids = {
+        item.capability_id
+        for item in pack.catalog.search(
+            "workflow planning",
+            allowed_capabilities=frozenset({"workspace.read"}),
+            limit=20,
+        )
+    }
+    assert "skill:build-workflow-from-request" in ids
+    assert "skill:discover-capability" not in ids
 
 
 def test_developer_pack_composes_core_agent_profile(tmp_path: Path) -> None:

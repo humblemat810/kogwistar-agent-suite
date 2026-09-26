@@ -14,13 +14,24 @@ pip install -e .
 python -m pytest -q
 ```
 
-The first pack exposes only bounded read operations:
+The first pack exposes bounded local read operations:
 
 ```text
 kogwistar-agent-suite --workspace . search "test failure" --capability workspace.read --capability shell.test
 kogwistar-agent-suite --workspace . profile
 kogwistar-agent-suite --workspace . read README.md
 ```
+
+The Python API also includes deterministic text search and read-only Git
+inspection (`workspace.search_text`, `git.status`, `git.diff_stat`, and
+`git.log`). Each operation has path, result-size, and timeout bounds. A caller
+may explicitly compose configured external adapters into the same pack; no
+adapter is discovered or connected automatically.
+
+Useful starter skills cover code search, incident triage, execution-history
+inspection, workflow design, capability discovery, citation-preserving
+research, and isolated vision delegation. Skills are descriptors and policy
+recipes; execution remains ordinary Kogwistar workflow composition.
 
 External MCP invocation, shell mutation, GitHub writes, and model providers
 remain separate plugins. They must pass host ACL, approval, budget, and
