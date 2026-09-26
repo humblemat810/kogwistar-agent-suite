@@ -175,7 +175,7 @@ class LlmWikiAdapter:
 
 
 class AtlassianAdapter:
-    manifest = PluginManifest("kogwistar-agent-suite.atlassian", "0.1.0", ("atlassian.read", "atlassian.write"))
+    manifest = PluginManifest("kogwistar-agent-suite.atlassian", "0.1.0", ("atlassian.read",))
 
     def __init__(self, transport: JsonTransport, *, site: str) -> None:
         self._transport = transport
