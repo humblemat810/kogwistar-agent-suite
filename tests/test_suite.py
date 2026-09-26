@@ -86,6 +86,16 @@ def test_hooks_transform_context_in_order() -> None:
     assert result == {"request": "review", "mode": "plan", "steps_left": 3}
 
 
+def test_hooks_require_effective_capability() -> None:
+    bundle = HookBundle(
+        "budget",
+        (lambda _payload: {"steps_left": 3},),
+        required_capabilities=frozenset({"agent.budget"}),
+    )
+    assert run_hooks((bundle,), {}) == {}
+    assert run_hooks((bundle,), {}, effective_capabilities=("agent.budget",)) == {"steps_left": 3}
+
+
 def test_fail_closed_hook_does_not_hide_errors() -> None:
     def broken(_payload: object) -> None:
         raise RuntimeError("hook failure")
