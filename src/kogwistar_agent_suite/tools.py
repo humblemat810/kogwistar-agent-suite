@@ -165,7 +165,7 @@ class GitReadTool:
             raise ValueError("Git arguments cannot contain NUL")
         try:
             completed = subprocess.run(
-                ["git", *args],
+                ["git", "--no-optional-locks", *args],
                 cwd=self.root,
                 capture_output=True,
                 text=True,

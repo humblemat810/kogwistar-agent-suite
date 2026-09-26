@@ -26,7 +26,11 @@ class DeveloperPack:
         """Attach one explicitly configured optional adapter to this pack."""
 
         descriptors = adapter.descriptors()
+        descriptor_ids: set[str] = set()
         for descriptor in descriptors:
+            if descriptor.capability_id in descriptor_ids:
+                raise ValueError(f"duplicate capability: {descriptor.capability_id}")
+            descriptor_ids.add(descriptor.capability_id)
             try:
                 self.catalog.get(descriptor.capability_id)
             except KeyError:
