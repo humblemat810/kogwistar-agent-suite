@@ -47,6 +47,8 @@ class McpCatalog:
         *,
         allowed_capabilities: frozenset[str] = frozenset(),
         acl: AclCheck | None = None,
+        mode: str = "lexical",
+        limit: int = 20,
     ) -> tuple[CapabilityDescriptor, ...]:
         catalog = CapabilityCatalog(item.descriptor() for item in self._capabilities.values())
-        return catalog.search(query, allowed_capabilities=allowed_capabilities, acl=acl)
+        return catalog.search(query, allowed_capabilities=allowed_capabilities, acl=acl, mode=mode, limit=limit)

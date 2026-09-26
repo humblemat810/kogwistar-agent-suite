@@ -1,6 +1,12 @@
 """Concrete Kogwistar agent integrations."""
 
-from .catalog import CapabilityCatalog, CapabilityDescriptor, CapabilityKind
+from .catalog import (
+    CapabilityCatalog,
+    CapabilityDescriptor,
+    CapabilityKind,
+    CapabilitySearchResult,
+    CapabilitySemanticRanker,
+)
 from .adapters import (
     AtlassianAdapter,
     BrowserAdapter,
@@ -18,7 +24,7 @@ from .skills import SkillDescriptor, developer_skills
 from .tools import CommandResult, GitReadTool, LocalWorkspaceTool, ToolCall, ToolDescriptor, ToolRegistry
 
 __all__ = [
-    "CapabilityCatalog", "CapabilityDescriptor", "CapabilityKind",
+    "CapabilityCatalog", "CapabilityDescriptor", "CapabilityKind", "CapabilitySearchResult", "CapabilitySemanticRanker",
     "AtlassianAdapter", "BrowserAdapter", "GitHubAdapter", "LlmWikiAdapter",
     "DeveloperPack", "HookBundle", "LocalWorkspaceTool", "McpCapability",
     "McpCatalog", "PluginManifest", "PluginRegistry", "SkillDescriptor",

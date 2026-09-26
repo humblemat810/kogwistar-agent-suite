@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from kogwistar.agent import AgentProfile, build_goal_workflow, build_plan_workflow
 
-from .catalog import CapabilityCatalog
+from .catalog import CapabilityCatalog, CapabilitySemanticRanker
 from .adapters import OptionalAdapter, register_optional_adapter
 from .hooks import HookBundle
 from .mcp import McpCapability
@@ -36,6 +36,7 @@ class DeveloperPack:
         *,
         allowed_capabilities: frozenset[str] = frozenset(),
         acl=None,
+        mode: str = "lexical",
         limit: int = 20,
     ):
         """Search every installed tool, MCP descriptor, skill, and adapter."""
@@ -44,8 +45,14 @@ class DeveloperPack:
             query,
             allowed_capabilities=allowed_capabilities,
             acl=acl,
+            mode=mode,
             limit=limit,
         )
+
+    def search_ranked(self, query: str, **kwargs):
+        """Return scores/match modes for progressive-disclosure decisions."""
+
+        return self.catalog.search_ranked(query, **kwargs)
 
     def register_tool(self, descriptor: ToolDescriptor, implementation) -> None:
         """Register a tool and publish its descriptor to progressive search."""
@@ -113,7 +120,12 @@ class DeveloperPack:
         raise ValueError("mode must be 'plan' or 'goal'")
 
 
-def developer_profile(workspace_root: str, adapters: tuple[OptionalAdapter, ...] = ()) -> DeveloperPack:
+def developer_profile(
+    workspace_root: str,
+    adapters: tuple[OptionalAdapter, ...] = (),
+    *,
+    semantic_ranker: CapabilitySemanticRanker | None = None,
+) -> DeveloperPack:
     workspace = LocalWorkspaceTool(workspace_root)
     git = GitReadTool(workspace_root)
     tools = ToolRegistry()
@@ -159,7 +171,7 @@ def developer_profile(workspace_root: str, adapters: tuple[OptionalAdapter, ...]
         )
     )
     skills = developer_skills()
-    catalog = tools.descriptor_catalog()
+    catalog = CapabilityCatalog(tools.descriptor_catalog().descriptors(), semantic_ranker=semantic_ranker)
     for skill in skills:
         catalog.add(skill.descriptor())
     pack = DeveloperPack(tools, catalog, plugins, skills, ())

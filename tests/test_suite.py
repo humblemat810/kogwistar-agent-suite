@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from kogwistar.agent import parse_skill_text
 
 from kogwistar_agent_suite import (
     AtlassianAdapter,
@@ -62,6 +63,55 @@ def test_developer_pack_searches_skills_and_tools(tmp_path: Path) -> None:
     assert results[0].capability_id == "skill:diagnose-test-failure"
 
 
+def test_capability_search_supports_bm25_partial_and_acl(tmp_path: Path) -> None:
+    pack = developer_profile(str(tmp_path))
+    ranked = pack.search_ranked(
+        "workflow planning",
+        allowed_capabilities=frozenset({"workspace.read"}),
+        mode="bm25",
+    )
+    assert ranked[0].descriptor.capability_id == "skill:build-workflow-from-request"
+    assert ranked[0].match == "bm25"
+    assert pack.search_ranked(
+        "vision",
+        allowed_capabilities=frozenset({"workspace.read"}),
+        mode="semantic",
+    ) == ()
+    partial = pack.search_ranked(
+        "capabil",
+        allowed_capabilities=frozenset({"workspace.read"}),
+    )
+    assert partial and partial[0].match in {"partial", "prefix", "exact"}
+
+
+def test_optional_semantic_ranker_runs_after_acl_and_falls_back(tmp_path: Path) -> None:
+    seen: list[str] = []
+
+    def rank(query: str, candidates) -> dict[str, float]:
+        seen.append(query)
+        return {item.capability_id: 10.0 for item in candidates if item.capability_id.startswith("skill:")}
+
+    pack = developer_profile(str(tmp_path), semantic_ranker=rank)
+    result = pack.search_ranked(
+        "anything",
+        allowed_capabilities=frozenset({"workspace.read"}),
+        mode="semantic",
+    )
+    assert result[0].match == "semantic"
+    assert result[0].descriptor.capability_id.startswith("skill:")
+    assert seen == ["anything"]
+
+    def broken(_query: str, _candidates) -> dict[str, float]:
+        raise RuntimeError("ranker unavailable")
+
+    fallback = developer_profile(str(tmp_path), semantic_ranker=broken).search_ranked(
+        "workflow planning",
+        allowed_capabilities=frozenset({"workspace.read"}),
+        mode="semantic",
+    )
+    assert fallback[0].match == "bm25"
+
+
 def test_workspace_search_is_bounded_and_deterministic(tmp_path: Path) -> None:
     (tmp_path / "b.txt").write_text("needle second\n", encoding="utf-8")
     (tmp_path / "a.txt").write_text("needle first\n", encoding="utf-8")
@@ -102,6 +152,24 @@ def test_optional_adapter_composes_into_pack_and_closes(tmp_path: Path) -> None:
     assert len(pack.plugins) == 2
     pack.close()
     assert transport.closed is True
+
+
+def test_skill_ingestion_returns_validated_core_graph(tmp_path: Path) -> None:
+    adapter = LlmWikiAdapter(
+        lambda source: parse_skill_text(
+            str(source["text"]), provider_id="llm-wiki", provider_local_id="deploy"
+        ).model_copy(update={"project_id": source.get("project_id")}),
+        authorize=lambda source: source.get("project_id") == "project-1",
+    )
+    artifact = adapter.ingest(
+        {"text": "# Deploy\n\nCapability: git.read\n\n1. inspect\n", "project_id": "project-1"},
+        effective_capabilities=frozenset({"llm_wiki.ingest"}),
+    )
+    assert artifact.provider_id == "llm-wiki"
+    assert artifact.nodes
+    assert artifact.edges
+    assert all(node.source_ref for node in artifact.nodes)
+    assert artifact.artifact_fingerprint()
 
 
 def test_runtime_capability_registration_updates_search_catalog(tmp_path: Path) -> None:

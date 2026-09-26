@@ -20,6 +20,10 @@ Use `pack.search()` for one disclosure surface. Use the specific invocation
 API only after host ACL, capability, approval, budget, and provenance policy
 has been applied.
 
+For ranking diagnostics use `pack.search_ranked()` or CLI `--ranked`. BM25 is
+the useful no-embedding fallback. Hosts may inject a vector/semantic ranker;
+the package keeps it optional and falls back safely when unavailable.
+
 ## Optional dependency policy
 
 Base import must work without vendor SDKs. Optional extras are convenience

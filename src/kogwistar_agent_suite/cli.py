@@ -17,6 +17,8 @@ def build_parser() -> argparse.ArgumentParser:
     search = subparsers.add_parser("search", help="search installed capabilities")
     search.add_argument("query")
     search.add_argument("--capability", action="append", default=[])
+    search.add_argument("--mode", choices=("lexical", "bm25", "semantic"), default="lexical")
+    search.add_argument("--ranked", action="store_true")
     subparsers.add_parser("profile", help="print the core AgentProfile")
     read = subparsers.add_parser("read", help="read bounded workspace text")
     read.add_argument("path")
@@ -28,11 +30,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     pack = developer_profile(args.workspace)
     if args.command == "search":
-        print(json.dumps(
-            [item.__dict__ for item in pack.search(
+        if args.ranked:
+            values = [
+                {"capability": result.descriptor.__dict__, "match": result.match, "score": result.score}
+                for result in pack.search_ranked(
+                    args.query,
+                    allowed_capabilities=frozenset(args.capability),
+                    mode=args.mode,
+                )
+            ]
+        else:
+            values = [item.__dict__ for item in pack.search(
                 args.query,
                 allowed_capabilities=frozenset(args.capability),
-            )],
+                mode=args.mode,
+            )]
+        print(json.dumps(
+            values,
             default=str,
             sort_keys=True,
         ))
