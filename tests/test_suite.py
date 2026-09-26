@@ -13,7 +13,9 @@ from kogwistar_agent_suite import (
     PluginManifest,
     PluginRegistry,
     SlackAdapter,
+    SkillDescriptor,
     ToolCall,
+    ToolDescriptor,
     developer_profile,
     GitReadTool,
     run_hooks,
@@ -100,6 +102,27 @@ def test_optional_adapter_composes_into_pack_and_closes(tmp_path: Path) -> None:
     assert len(pack.plugins) == 2
     pack.close()
     assert transport.closed is True
+
+
+def test_runtime_capability_registration_updates_search_catalog(tmp_path: Path) -> None:
+    pack = developer_profile(str(tmp_path))
+    pack.register_tool(
+        ToolDescriptor("custom.inspect", "Inspect custom", "Inspect a local custom resource."),
+        lambda: "ok",
+    )
+    pack.register_mcp(McpCapability("custom", "lookup", "Look up an authorized custom resource."))
+    pack.register_skill(
+        SkillDescriptor(
+            "custom-research",
+            "Custom research",
+            "Research a custom source.",
+            ("lookup",),
+        )
+    )
+    ids = {item.capability_id for item in pack.search("custom", limit=20)}
+    assert ids >= {"tool:custom.inspect", "mcp:custom:lookup", "skill:custom-research"}
+    with pytest.raises(ValueError):
+        pack.register_tool(ToolDescriptor("custom.inspect", "Duplicate", "Duplicate"), lambda: None)
 
 
 def test_useful_agent_skills_are_discoverable(tmp_path: Path) -> None:

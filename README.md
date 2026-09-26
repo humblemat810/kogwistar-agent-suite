@@ -33,6 +33,33 @@ inspection, workflow design, capability discovery, citation-preserving
 research, and isolated vision delegation. Skills are descriptors and policy
 recipes; execution remains ordinary Kogwistar workflow composition.
 
+## Capability Discovery
+
+All installed capabilities share one searchable catalog. Results are filtered
+before disclosure by required capabilities and an optional host ACL callback:
+
+```python
+pack = developer_profile(".")
+results = pack.search(
+    "workflow planning",
+    allowed_capabilities=frozenset({"workspace.read"}),
+)
+```
+
+Runtime additions must use the pack registration methods so progressive
+discovery stays complete:
+
+```python
+pack.register_tool(descriptor, implementation)
+pack.register_skill(skill_descriptor)
+pack.register_mcp(mcp_descriptor)
+pack.register_adapter(configured_adapter)
+```
+
+`pack.search()` exposes descriptors only. `ToolRegistry.call()` and external
+adapter methods perform the second authorization check; catalog visibility is
+never execution authority.
+
 External MCP invocation, shell mutation, GitHub writes, and model providers
 remain separate plugins. They must pass host ACL, approval, budget, and
 provenance checks before being added.
@@ -50,3 +77,6 @@ The adapters accept injected clients, so deterministic tests and deployments
 may use an internal gateway or local fake without installing a vendor SDK.
 No adapter is auto-discovered or compulsory. LLM-Wiki integration reuses the
 core provider-neutral ingestion contract and remains optional.
+
+Detailed contracts: [`docs/capability-discovery.md`](docs/capability-discovery.md)
+and [`docs/tool-and-adapter-matrix.md`](docs/tool-and-adapter-matrix.md).

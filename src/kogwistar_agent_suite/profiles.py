@@ -9,6 +9,7 @@ from kogwistar.agent import AgentProfile, build_goal_workflow, build_plan_workfl
 from .catalog import CapabilityCatalog
 from .adapters import OptionalAdapter, register_optional_adapter
 from .hooks import HookBundle
+from .mcp import McpCapability
 from .plugins import PluginManifest, PluginRegistry
 from .skills import SkillDescriptor, developer_skills
 from .tools import GitReadTool, LocalWorkspaceTool, ToolDescriptor, ToolRegistry
@@ -22,6 +23,50 @@ class DeveloperPack:
     skills: tuple[SkillDescriptor, ...]
     hooks: tuple[HookBundle, ...]
 
+    def _ensure_capability_available(self, capability_id: str) -> None:
+        try:
+            self.catalog.get(capability_id)
+        except KeyError:
+            return
+        raise ValueError(f"duplicate capability: {capability_id}")
+
+    def search(
+        self,
+        query: str,
+        *,
+        allowed_capabilities: frozenset[str] = frozenset(),
+        acl=None,
+        limit: int = 20,
+    ):
+        """Search every installed tool, MCP descriptor, skill, and adapter."""
+
+        return self.catalog.search(
+            query,
+            allowed_capabilities=allowed_capabilities,
+            acl=acl,
+            limit=limit,
+        )
+
+    def register_tool(self, descriptor: ToolDescriptor, implementation) -> None:
+        """Register a tool and publish its descriptor to progressive search."""
+
+        self._ensure_capability_available(f"tool:{descriptor.tool_id}")
+        self.tools.register(descriptor, implementation)
+        self.catalog.add(descriptor.descriptor())
+
+    def register_skill(self, skill: SkillDescriptor) -> None:
+        """Register a skill descriptor without granting execution authority."""
+
+        self._ensure_capability_available(f"skill:{skill.skill_id}")
+        self.skills = (*self.skills, skill)
+        self.catalog.add(skill.descriptor())
+
+    def register_mcp(self, capability: McpCapability) -> None:
+        """Publish an MCP descriptor; invocation remains a separate adapter."""
+
+        self._ensure_capability_available(capability.capability_id)
+        self.catalog.add(capability.descriptor())
+
     def register_adapter(self, adapter: OptionalAdapter) -> None:
         """Attach one explicitly configured optional adapter to this pack."""
 
@@ -31,11 +76,7 @@ class DeveloperPack:
             if descriptor.capability_id in descriptor_ids:
                 raise ValueError(f"duplicate capability: {descriptor.capability_id}")
             descriptor_ids.add(descriptor.capability_id)
-            try:
-                self.catalog.get(descriptor.capability_id)
-            except KeyError:
-                continue
-            raise ValueError(f"duplicate capability: {descriptor.capability_id}")
+            self._ensure_capability_available(descriptor.capability_id)
         register_optional_adapter(self.plugins, adapter)
         for descriptor in descriptors:
             self.catalog.add(descriptor)

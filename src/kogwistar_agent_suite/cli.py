@@ -29,7 +29,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     pack = developer_profile(args.workspace)
     if args.command == "search":
         print(json.dumps(
-            [item.__dict__ for item in pack.catalog.search(
+            [item.__dict__ for item in pack.search(
                 args.query,
                 allowed_capabilities=frozenset(args.capability),
             )],
