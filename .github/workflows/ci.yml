@@ -36,7 +36,7 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install "kogwistar @ git+https://github.com/humblemat810/kogwistar.git@main"
 
       - name: Install suite test dependencies
-        run: python -m pip install --no-deps -e . "pytest>=8" ruff
+        run: python -m pip install --no-deps -e . "pytest>=8" "ruff==0.16.7"
 
       - name: Lint
         run: python -m ruff check src tests
