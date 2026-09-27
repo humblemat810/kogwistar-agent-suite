@@ -165,6 +165,7 @@ def developer_profile(
             "List workspace files",
             "List bounded files below the configured workspace root.",
             frozenset({"workspace.read"}),
+            side_effect="read",
         ),
         workspace.list_files,
     )
@@ -174,6 +175,7 @@ def developer_profile(
             "Read workspace text",
             "Read bounded UTF-8 text below the configured workspace root.",
             frozenset({"workspace.read"}),
+            side_effect="read",
         ),
         workspace.read_text,
     )
@@ -183,6 +185,7 @@ def developer_profile(
             "Search workspace text",
             "Search bounded UTF-8 text below the configured workspace root.",
             frozenset({"workspace.read"}),
+            side_effect="read",
         ),
         workspace.search_text,
     )
@@ -191,7 +194,7 @@ def developer_profile(
         ("git.diff_stat", "Read Git diff stat", "Read a bounded working-tree diff summary.", git.diff_stat),
         ("git.log", "Read Git log", "Read a bounded recent commit log.", git.log),
     ):
-        tools.register(ToolDescriptor(tool_id, name, summary, frozenset({"git.read"})), implementation)
+        tools.register(ToolDescriptor(tool_id, name, summary, frozenset({"git.read"}), side_effect="read"), implementation)
     plugins = PluginRegistry()
     plugins.register(
         PluginManifest(

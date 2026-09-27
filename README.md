@@ -56,13 +56,17 @@ pack.register_mcp(mcp_descriptor)
 pack.register_adapter(configured_adapter)
 ```
 
-`pack.search()` exposes descriptors only. `ToolRegistry.call()` and external
-adapter methods perform the second authorization check; catalog visibility is
-never execution authority.
+`pack.search()` exposes descriptors only. `ToolRegistry.call()` and every
+external adapter method require an explicit host ACL resolver at invocation;
+omitting it fails closed before any implementation or transport runs. ACL is
+checked first, then effective capability, then write approval. Catalog
+visibility is never execution authority. A custom mutating tool must declare a
+write side effect and at least one required capability.
 
 External MCP invocation, shell mutation, GitHub writes, and model providers
-remain separate plugins. They must pass host ACL, approval, budget, and
-provenance checks before being added.
+remain separate plugins. They must pass host ACL, effective capability,
+approval for mutation, budget, and provenance checks before action. No implicit
+role or default allow policy is supplied by this package.
 
 Optional adapter extras are independent:
 

@@ -15,6 +15,12 @@ compression, memory, knowledge, wisdom, and durable skill projections.
 - Profile authority is intersected with caller capabilities by core ACL rules.
 - Plan and goal are ordinary core workflow designs, selected by workflow ID.
 - Optional adapters expose descriptors only until an explicitly authorized call.
+- Direct tool and adapter calls fail closed without an explicit host ACL
+  resolver. Order is ACL -> effective capability -> mutation approval ->
+  external action; no implicit role is authority.
+- Custom tools must explicitly declare `side_effect="read"` or `"write"`;
+  write tools must declare a required capability and pass explicit approval.
+  Registration rejects an omitted side effect or empty write capability set.
 - LLM-Wiki ingestion returns core `SkillGraphArtifact`; persistence belongs to
   core projection stores, not this suite.
 - Catalog search is progressive disclosure: ACL filtering precedes ranking.
@@ -39,7 +45,8 @@ skill/MCP projections remain core responsibilities.
 
 ## Acceptance boundary
 
-Suite tests prove composition, ACL filtering, progressive discovery, adapter
-approval, and deterministic local behavior. Core integration tests must still
+Suite tests prove composition, fail-closed ACL filtering, progressive
+discovery, adapter approval, custom-tool write protection, and deterministic
+local behavior. Core integration tests must still
 prove backend parity, persistence/recovery, async execution, and durable
 projection behavior.

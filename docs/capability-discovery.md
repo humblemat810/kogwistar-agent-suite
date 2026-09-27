@@ -112,7 +112,12 @@ are host concerns:
 | LLM-Wiki | authorized skill ingestion | ingestion contract only |
 
 Write methods require both an effective capability and an explicit approval
-callback. Read methods still require capabilities. `close()` is called through
+callback. Every direct tool/adapter method also requires an explicit host ACL
+resolver; omission denies before capability checks or provider transport.
+Order is ACL -> effective capability -> approval for mutation -> action. No
+implicit role is supplied. Custom tools must explicitly declare
+`side_effect="read"` or `side_effect="write"`; write values must declare a
+non-empty required-capability set. `close()` is called through
 the plugin registry when `pack.close()` runs.
 
 ## Safety boundary

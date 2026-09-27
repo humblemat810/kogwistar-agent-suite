@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from kogwistar.agent import LlmWikiIngestionAdapter
 
 from .catalog import CapabilityDescriptor, CapabilityKind
+from .authorization import AclResolver, ApprovalResolver, require_acl, require_approval, require_capabilities
 from .plugins import PluginManifest, PluginRegistry
 
 
@@ -26,14 +27,20 @@ class JsonTransport(Protocol):
     ) -> Mapping[str, Any]: ...
 
 
-Approval = Callable[[str, Mapping[str, Any]], bool]
+Approval = ApprovalResolver
 TextFetcher = Callable[[str], str]
 
 
-def _require_capabilities(required: frozenset[str], effective: frozenset[str]) -> None:
-    missing = required - effective
-    if missing:
-        raise PermissionError("adapter capabilities denied: " + ", ".join(sorted(missing)))
+def _authorize(
+    *,
+    action: str,
+    request: Mapping[str, Any],
+    required: frozenset[str],
+    effective: frozenset[str],
+    acl: AclResolver | None,
+) -> None:
+    require_acl(action=action, request=request, acl=acl)
+    require_capabilities(required, effective, action=action)
 
 
 def _limit(value: int, *, maximum: int = 100) -> int:
@@ -84,8 +91,9 @@ class GitHubAdapter:
             _descriptor("tool:github.create_issue", "Create GitHub issue", "Create an issue only after explicit host approval.", frozenset({"github.write"}), self.manifest.plugin_id, side_effect="write"),
         )
 
-    def search_issues(self, query: str, *, effective_capabilities: frozenset[str], limit: int = 20) -> tuple[Mapping[str, Any], ...]:
-        _require_capabilities(frozenset({"github.read"}), effective_capabilities)
+    def search_issues(self, query: str, *, effective_capabilities: frozenset[str], acl: AclResolver | None = None, limit: int = 20) -> tuple[Mapping[str, Any], ...]:
+        request = {"query": query, "repository": self.repository, "limit": limit}
+        _authorize(action="github.search_issues", request=request, required=frozenset({"github.read"}), effective=effective_capabilities, acl=acl)
         count = _limit(limit)
         payload = self._transport.request("GET", "/search/issues", params={"q": query, "per_page": count})
         items = payload.get("items", ())
@@ -93,13 +101,12 @@ class GitHubAdapter:
             raise ValueError("GitHub search response items must be a sequence")
         return tuple(item for item in items[:count] if isinstance(item, Mapping))
 
-    def create_issue(self, title: str, body: str, *, effective_capabilities: frozenset[str], approve: Approval | None) -> Mapping[str, Any]:
-        _require_capabilities(frozenset({"github.write"}), effective_capabilities)
+    def create_issue(self, title: str, body: str, *, effective_capabilities: frozenset[str], acl: AclResolver | None = None, approve: Approval | None = None) -> Mapping[str, Any]:
+        request = {"repository": self.repository, "title": title, "body": body}
+        _authorize(action="github.create_issue", request=request, required=frozenset({"github.write"}), effective=effective_capabilities, acl=acl)
         if not self.repository:
             raise ValueError("repository is required for issue creation")
-        request = {"repository": self.repository, "title": title, "body": body}
-        if approve is None or not approve("github.create_issue", request):
-            raise PermissionError("GitHub write requires explicit approval")
+        require_approval(action="github.create_issue", request=request, approve=approve)
         return self._transport.request("POST", f"/repos/{self.repository}/issues", json={"title": title, "body": body})
 
     def close(self) -> None:
@@ -118,8 +125,8 @@ class BrowserAdapter:
     def descriptors(self) -> tuple[CapabilityDescriptor, ...]:
         return (_descriptor("tool:browser.fetch_text", "Fetch browser text", "Fetch bounded page text through an injected browser client.", frozenset({"browser.read"}), self.manifest.plugin_id),)
 
-    def fetch(self, url: str, *, effective_capabilities: frozenset[str]) -> str:
-        _require_capabilities(frozenset({"browser.read"}), effective_capabilities)
+    def fetch(self, url: str, *, effective_capabilities: frozenset[str], acl: AclResolver | None = None) -> str:
+        _authorize(action="browser.fetch_text", request={"url": url, "max_chars": self.max_chars}, required=frozenset({"browser.read"}), effective=effective_capabilities, acl=acl)
         return self._fetch_text(url)[: self.max_chars]
 
     def close(self) -> None:
@@ -140,15 +147,15 @@ class SlackAdapter:
             _descriptor("tool:slack.send", "Send Slack message", "Send a message only after explicit approval.", frozenset({"slack.write"}), self.manifest.plugin_id, side_effect="write"),
         )
 
-    def search(self, query: str, *, effective_capabilities: frozenset[str], limit: int = 20) -> Any:
-        _require_capabilities(frozenset({"slack.read"}), effective_capabilities)
-        return self._client.search_messages(query=query, limit=_limit(limit))
+    def search(self, query: str, *, effective_capabilities: frozenset[str], acl: AclResolver | None = None, limit: int = 20) -> Any:
+        _authorize(action="slack.search", request={"query": query, "limit": limit}, required=frozenset({"slack.read"}), effective=effective_capabilities, acl=acl)
+        count = _limit(limit)
+        return self._client.search_messages(query=query, limit=count)
 
-    def send(self, channel: str, text: str, *, effective_capabilities: frozenset[str], approve: Approval | None) -> Any:
-        _require_capabilities(frozenset({"slack.write"}), effective_capabilities)
+    def send(self, channel: str, text: str, *, effective_capabilities: frozenset[str], acl: AclResolver | None = None, approve: Approval | None = None) -> Any:
         request = {"channel": channel, "text": text}
-        if approve is None or not approve("slack.send", request):
-            raise PermissionError("Slack write requires explicit approval")
+        _authorize(action="slack.send", request=request, required=frozenset({"slack.write"}), effective=effective_capabilities, acl=acl)
+        require_approval(action="slack.send", request=request, approve=approve)
         return self._client.send_message(channel=channel, text=text)
 
     def close(self) -> None:
@@ -166,8 +173,8 @@ class LlmWikiAdapter:
     def descriptors(self) -> tuple[CapabilityDescriptor, ...]:
         return (_descriptor("tool:llm_wiki.ingest_skill", "Ingest LLM-Wiki skill", "Parse an authorized skill source into a validated graph artifact.", frozenset({"llm_wiki.ingest"}), self.manifest.plugin_id),)
 
-    def ingest(self, source: Mapping[str, Any], *, effective_capabilities: frozenset[str]) -> Any:
-        _require_capabilities(frozenset({"llm_wiki.ingest"}), effective_capabilities)
+    def ingest(self, source: Mapping[str, Any], *, effective_capabilities: frozenset[str], acl: AclResolver | None = None) -> Any:
+        _authorize(action="llm_wiki.ingest_skill", request=source, required=frozenset({"llm_wiki.ingest"}), effective=effective_capabilities, acl=acl)
         return self._adapter.parse(source)
 
     def close(self) -> None:
@@ -187,13 +194,15 @@ class AtlassianAdapter:
             _descriptor("tool:atlassian.search_confluence", "Search Confluence", "Search Confluence pages with bounded results.", frozenset({"atlassian.read"}), self.manifest.plugin_id),
         )
 
-    def search_jira(self, query: str, *, effective_capabilities: frozenset[str], limit: int = 20) -> Mapping[str, Any]:
-        _require_capabilities(frozenset({"atlassian.read"}), effective_capabilities)
-        return self._transport.request("GET", "/rest/api/3/search", params={"jql": query, "maxResults": _limit(limit)})
+    def search_jira(self, query: str, *, effective_capabilities: frozenset[str], acl: AclResolver | None = None, limit: int = 20) -> Mapping[str, Any]:
+        _authorize(action="atlassian.search_jira", request={"site": self.site, "query": query, "limit": limit}, required=frozenset({"atlassian.read"}), effective=effective_capabilities, acl=acl)
+        count = _limit(limit)
+        return self._transport.request("GET", "/rest/api/3/search", params={"jql": query, "maxResults": count})
 
-    def search_confluence(self, query: str, *, effective_capabilities: frozenset[str], limit: int = 20) -> Mapping[str, Any]:
-        _require_capabilities(frozenset({"atlassian.read"}), effective_capabilities)
-        return self._transport.request("GET", "/wiki/rest/api/content/search", params={"cql": query, "limit": _limit(limit)})
+    def search_confluence(self, query: str, *, effective_capabilities: frozenset[str], acl: AclResolver | None = None, limit: int = 20) -> Mapping[str, Any]:
+        _authorize(action="atlassian.search_confluence", request={"site": self.site, "query": query, "limit": limit}, required=frozenset({"atlassian.read"}), effective=effective_capabilities, acl=acl)
+        count = _limit(limit)
+        return self._transport.request("GET", "/wiki/rest/api/content/search", params={"cql": query, "limit": count})
 
     def close(self) -> None:
         close = getattr(self._transport, "close", None)

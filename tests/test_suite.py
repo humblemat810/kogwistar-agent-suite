@@ -33,6 +33,10 @@ from kogwistar_agent_suite.cli import main
 pytestmark = pytest.mark.ci
 
 
+def allow_all(_action, _request) -> bool:
+    return True
+
+
 class ZeroEmbedding:
     def __call__(self, texts):
         return [[0.0, 0.0, 0.0, 0.0] for _ in texts]
@@ -150,17 +154,20 @@ def test_workspace_search_is_bounded_and_deterministic(tmp_path: Path) -> None:
     result = pack.tools.call(
         ToolCall("workspace.search_text", {"query": "needle"}),
         allowed_capabilities=frozenset({"workspace.read"}),
+        acl=allow_all,
     )
     assert [item["path"] for item in result] == ["a.txt", "b.txt"]
     with pytest.raises(PermissionError):
         pack.tools.call(
             ToolCall("workspace.search_text", {"query": "needle", "relative_path": ".."}),
             allowed_capabilities=frozenset({"workspace.read"}),
+            acl=allow_all,
         )
     with pytest.raises(ValueError):
         pack.tools.call(
             ToolCall("workspace.search_text", {"query": "needle", "max_matches": 0}),
             allowed_capabilities=frozenset({"workspace.read"}),
+            acl=allow_all,
         )
 
 
@@ -195,6 +202,7 @@ def test_skill_ingestion_returns_validated_core_graph(tmp_path: Path) -> None:
     artifact = adapter.ingest(
         {"text": "# Deploy\n\nCapability: git.read\n\n1. inspect\n", "project_id": "project-1"},
         effective_capabilities=frozenset({"llm_wiki.ingest"}),
+        acl=allow_all,
     )
     assert artifact.provider_id == "llm-wiki"
     assert artifact.nodes
@@ -206,7 +214,7 @@ def test_skill_ingestion_returns_validated_core_graph(tmp_path: Path) -> None:
 def test_runtime_capability_registration_updates_search_catalog(tmp_path: Path) -> None:
     pack = developer_profile(str(tmp_path))
     pack.register_tool(
-        ToolDescriptor("custom.inspect", "Inspect custom", "Inspect a local custom resource."),
+        ToolDescriptor("custom.inspect", "Inspect custom", "Inspect a local custom resource.", side_effect="read"),
         lambda: "ok",
     )
     pack.register_mcp(McpCapability("custom", "lookup", "Look up an authorized custom resource."))
@@ -221,7 +229,7 @@ def test_runtime_capability_registration_updates_search_catalog(tmp_path: Path) 
     ids = {item.capability_id for item in pack.search("custom", limit=20)}
     assert ids >= {"tool:custom.inspect", "mcp:custom:lookup", "skill:custom-research"}
     with pytest.raises(ValueError):
-        pack.register_tool(ToolDescriptor("custom.inspect", "Duplicate", "Duplicate"), lambda: None)
+        pack.register_tool(ToolDescriptor("custom.inspect", "Duplicate", "Duplicate", side_effect="read"), lambda: None)
 
 
 def test_useful_agent_skills_are_discoverable(tmp_path: Path) -> None:
@@ -361,12 +369,13 @@ def test_acl_filters_tool_calls(tmp_path: Path) -> None:
     assert pack.tools.call(
         ToolCall("workspace.list_files", {}),
         allowed_capabilities=frozenset({"workspace.read"}),
+        acl=allow_all,
     ) == []
     with pytest.raises(PermissionError):
         pack.tools.call(
             ToolCall("workspace.list_files", {}),
             allowed_capabilities=frozenset({"workspace.read"}),
-            acl=lambda _descriptor: False,
+            acl=lambda _action, _request: False,
         )
 
 
@@ -376,7 +385,83 @@ def test_workspace_tool_rejects_escape(tmp_path: Path) -> None:
         pack.tools.call(
             ToolCall("workspace.read_text", {"relative_path": "../secret"}),
             allowed_capabilities=frozenset({"workspace.read"}),
+            acl=allow_all,
         )
+
+
+def test_custom_write_tool_requires_acl_capability_and_approval(tmp_path: Path) -> None:
+    pack = developer_profile(str(tmp_path))
+    called: list[dict[str, object]] = []
+    pack.register_tool(
+        ToolDescriptor(
+            "custom.update",
+            "Update custom resource",
+            "Mutate a custom resource.",
+            frozenset({"custom.write"}),
+            side_effect="write",
+        ),
+        lambda **kwargs: called.append(kwargs) or "updated",
+    )
+    with pytest.raises(PermissionError, match="explicit ACL"):
+        pack.tools.call(
+            ToolCall("custom.update", {"id": "r1"}),
+            allowed_capabilities=frozenset({"custom.write"}),
+        )
+    with pytest.raises(PermissionError, match="approval"):
+        pack.tools.call(
+            ToolCall("custom.update", {"id": "r1"}),
+            allowed_capabilities=frozenset({"custom.write"}),
+            acl=allow_all,
+        )
+    with pytest.raises(PermissionError, match="capabilities"):
+        pack.tools.call(
+            ToolCall("custom.update", {"id": "r1"}),
+            allowed_capabilities=frozenset(),
+            acl=allow_all,
+            approve=allow_all,
+        )
+    assert pack.tools.call(
+        ToolCall("custom.update", {"id": "r1"}),
+        allowed_capabilities=frozenset({"custom.write"}),
+        acl=allow_all,
+        approve=allow_all,
+    ) == "updated"
+    assert called == [{"id": "r1"}]
+
+
+def test_custom_write_tool_cannot_omit_capability(tmp_path: Path) -> None:
+    pack = developer_profile(str(tmp_path))
+    with pytest.raises(ValueError, match="explicit"):
+        pack.register_tool(
+            ToolDescriptor("custom.unknown", "Unknown", "Unclassified"),
+            lambda: None,
+        )
+    with pytest.raises(ValueError, match="explicit capability"):
+        pack.register_tool(
+            ToolDescriptor("custom.update", "Update", "Mutate", side_effect="write"),
+            lambda: None,
+        )
+
+
+def test_acl_is_evaluated_before_capability_and_action(tmp_path: Path) -> None:
+    pack = developer_profile(str(tmp_path))
+    called: list[str] = []
+    pack.register_tool(
+        ToolDescriptor("custom.read", "Read custom", "Read custom", frozenset({"custom.read"}), side_effect="read"),
+        lambda: called.append("action") or "ok",
+    )
+
+    def deny(action, _request):
+        called.append(action)
+        return False
+
+    with pytest.raises(PermissionError, match="ACL denied"):
+        pack.tools.call(
+            ToolCall("custom.read", {}),
+            allowed_capabilities=frozenset(),
+            acl=deny,
+        )
+    assert called == ["custom.read"]
 
 
 def test_mcp_is_descriptor_only_until_authorized() -> None:
@@ -425,28 +510,33 @@ def test_fail_closed_hook_does_not_hide_errors() -> None:
 def test_optional_adapters_are_acl_and_approval_gated() -> None:
     transport = FakeTransport()
     github = GitHubAdapter(transport, repository="example/project")
-    assert github.search_issues("bug", effective_capabilities=frozenset({"github.read"})) == ({"number": 1}, {"number": 2})
+    with pytest.raises(PermissionError, match="explicit ACL"):
+        github.search_issues("bug", effective_capabilities=frozenset({"github.read"}))
+    assert github.search_issues("bug", effective_capabilities=frozenset({"github.read"}), acl=allow_all) == ({"number": 1}, {"number": 2})
     with pytest.raises(PermissionError):
-        github.search_issues("bug", effective_capabilities=frozenset())
+        github.search_issues("bug", effective_capabilities=frozenset(), acl=allow_all)
     with pytest.raises(PermissionError):
-        github.create_issue("title", "body", effective_capabilities=frozenset({"github.write"}), approve=None)
+        github.create_issue("title", "body", effective_capabilities=frozenset({"github.write"}), acl=allow_all, approve=None)
     assert github.create_issue(
         "title",
         "body",
         effective_capabilities=frozenset({"github.write"}),
+        acl=allow_all,
         approve=lambda action, request: action == "github.create_issue" and request["repository"] == "example/project",
     )["ok"] is True
 
     browser = BrowserAdapter(lambda _url: "abcdef", max_chars=3)
-    assert browser.fetch("https://example.test", effective_capabilities=frozenset({"browser.read"})) == "abc"
+    with pytest.raises(PermissionError, match="explicit ACL"):
+        browser.fetch("https://example.test", effective_capabilities=frozenset({"browser.read"}))
+    assert browser.fetch("https://example.test", effective_capabilities=frozenset({"browser.read"}), acl=allow_all) == "abc"
     slack_client = FakeSlack()
     slack = SlackAdapter(slack_client)
-    assert slack.search("incident", effective_capabilities=frozenset({"slack.read"}))["limit"] == 20
+    assert slack.search("incident", effective_capabilities=frozenset({"slack.read"}), acl=allow_all)["limit"] == 20
     with pytest.raises(PermissionError):
-        slack.send("#ops", "hello", effective_capabilities=frozenset({"slack.write"}), approve=None)
+        slack.send("#ops", "hello", effective_capabilities=frozenset({"slack.write"}), acl=allow_all, approve=None)
 
     atlassian = AtlassianAdapter(transport, site="example.atlassian.net")
-    assert atlassian.search_jira("project = KOG", effective_capabilities=frozenset({"atlassian.read"}))["ok"] is True
+    assert atlassian.search_jira("project = KOG", effective_capabilities=frozenset({"atlassian.read"}), acl=allow_all)["ok"] is True
     llm_wiki = LlmWikiAdapter(lambda source: source, authorize=lambda _source: True)
     assert llm_wiki.descriptors()[0].capability_id == "tool:llm_wiki.ingest_skill"
 
