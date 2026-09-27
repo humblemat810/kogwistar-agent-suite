@@ -29,8 +29,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install test dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[test]" ruff
+      - name: Set up Rust for the core package
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install current Kogwistar core
+        run: python -m pip install --upgrade pip && python -m pip install "kogwistar @ git+https://github.com/humblemat810/kogwistar.git@main"
+
+      - name: Install suite test dependencies
+        run: python -m pip install --no-deps -e . "pytest>=8" ruff
 
       - name: Lint
         run: python -m ruff check src tests
