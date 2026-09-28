@@ -1,7 +1,12 @@
+import asyncio
 from pathlib import Path
 
 import pytest
+from kogwistar.engine_core.engine import GraphKnowledgeEngine
+from kogwistar.engine_core.in_memory_backend import build_in_memory_backend
 from kogwistar.agent import parse_skill_text
+from kogwistar.runtime import MappingStepResolver, WorkflowRuntime
+from kogwistar.runtime.models import RunSuccess
 
 from kogwistar_agent_suite import (
     AtlassianAdapter,
@@ -23,6 +28,18 @@ from kogwistar_agent_suite import (
 )
 from kogwistar_agent_suite.adapters import adapter_descriptors, register_optional_adapter
 from kogwistar_agent_suite.cli import main
+
+
+pytestmark = pytest.mark.ci
+
+
+def allow_all(_action, _request) -> bool:
+    return True
+
+
+class ZeroEmbedding:
+    def __call__(self, texts):
+        return [[0.0, 0.0, 0.0, 0.0] for _ in texts]
 
 
 class FakeTransport:
@@ -92,6 +109,7 @@ def test_optional_semantic_ranker_runs_after_acl_and_falls_back(tmp_path: Path) 
         return {item.capability_id: 10.0 for item in candidates if item.capability_id.startswith("skill:")}
 
     pack = developer_profile(str(tmp_path), semantic_ranker=rank)
+    pack.catalog.set_semantic_ready("skill:build-workflow-from-request")
     result = pack.search_ranked(
         "anything",
         allowed_capabilities=frozenset({"workspace.read"}),
@@ -112,6 +130,23 @@ def test_optional_semantic_ranker_runs_after_acl_and_falls_back(tmp_path: Path) 
     assert fallback[0].match == "bm25"
 
 
+def test_semantic_ranker_excludes_pending_projection(tmp_path: Path) -> None:
+    seen: list[tuple[str, ...]] = []
+
+    def rank(_query: str, candidates) -> dict[str, float]:
+        seen.append(tuple(item.capability_id for item in candidates))
+        return {item.capability_id: 1.0 for item in candidates}
+
+    pack = developer_profile(str(tmp_path), semantic_ranker=rank)
+    result = pack.search_ranked(
+        "workspace",
+        allowed_capabilities=frozenset({"workspace.read"}),
+        mode="semantic",
+    )
+    assert result[0].match == "bm25"
+    assert seen == [()]
+
+
 def test_workspace_search_is_bounded_and_deterministic(tmp_path: Path) -> None:
     (tmp_path / "b.txt").write_text("needle second\n", encoding="utf-8")
     (tmp_path / "a.txt").write_text("needle first\n", encoding="utf-8")
@@ -119,17 +154,20 @@ def test_workspace_search_is_bounded_and_deterministic(tmp_path: Path) -> None:
     result = pack.tools.call(
         ToolCall("workspace.search_text", {"query": "needle"}),
         allowed_capabilities=frozenset({"workspace.read"}),
+        acl=allow_all,
     )
     assert [item["path"] for item in result] == ["a.txt", "b.txt"]
     with pytest.raises(PermissionError):
         pack.tools.call(
             ToolCall("workspace.search_text", {"query": "needle", "relative_path": ".."}),
             allowed_capabilities=frozenset({"workspace.read"}),
+            acl=allow_all,
         )
     with pytest.raises(ValueError):
         pack.tools.call(
             ToolCall("workspace.search_text", {"query": "needle", "max_matches": 0}),
             allowed_capabilities=frozenset({"workspace.read"}),
+            acl=allow_all,
         )
 
 
@@ -164,6 +202,7 @@ def test_skill_ingestion_returns_validated_core_graph(tmp_path: Path) -> None:
     artifact = adapter.ingest(
         {"text": "# Deploy\n\nCapability: git.read\n\n1. inspect\n", "project_id": "project-1"},
         effective_capabilities=frozenset({"llm_wiki.ingest"}),
+        acl=allow_all,
     )
     assert artifact.provider_id == "llm-wiki"
     assert artifact.nodes
@@ -175,7 +214,7 @@ def test_skill_ingestion_returns_validated_core_graph(tmp_path: Path) -> None:
 def test_runtime_capability_registration_updates_search_catalog(tmp_path: Path) -> None:
     pack = developer_profile(str(tmp_path))
     pack.register_tool(
-        ToolDescriptor("custom.inspect", "Inspect custom", "Inspect a local custom resource."),
+        ToolDescriptor("custom.inspect", "Inspect custom", "Inspect a local custom resource.", side_effect="read"),
         lambda: "ok",
     )
     pack.register_mcp(McpCapability("custom", "lookup", "Look up an authorized custom resource."))
@@ -190,7 +229,7 @@ def test_runtime_capability_registration_updates_search_catalog(tmp_path: Path) 
     ids = {item.capability_id for item in pack.search("custom", limit=20)}
     assert ids >= {"tool:custom.inspect", "mcp:custom:lookup", "skill:custom-research"}
     with pytest.raises(ValueError):
-        pack.register_tool(ToolDescriptor("custom.inspect", "Duplicate", "Duplicate"), lambda: None)
+        pack.register_tool(ToolDescriptor("custom.inspect", "Duplicate", "Duplicate", side_effect="read"), lambda: None)
 
 
 def test_useful_agent_skills_are_discoverable(tmp_path: Path) -> None:
@@ -219,6 +258,110 @@ def test_developer_pack_composes_core_agent_profile(tmp_path: Path) -> None:
     assert pack.workflow_design("goal").workflow_id == "agent.goal.v1"
 
 
+def test_developer_pack_binds_core_harness_without_new_runtime(tmp_path: Path) -> None:
+    class FakeRuntime:
+        def run(self, **kwargs):
+            return kwargs
+
+    pack = developer_profile(str(tmp_path))
+    harness = pack.make_harness(
+        FakeRuntime(),
+        caller_capabilities=("workspace.read", "shell.test", "git.read"),
+    )
+    result = harness.run(initial_state={"request": "inspect"}, conversation_id="c1")
+    assert result["workflow_id"] == "agent.plan.v1"
+    assert result["_authority_context"]["principal_id"] == "kogwistar.developer"
+
+
+def test_developer_pack_binds_async_core_harness(tmp_path: Path) -> None:
+    class FakeAsyncRuntime:
+        async def run(self, **kwargs):
+            return kwargs
+
+    pack = developer_profile(str(tmp_path))
+    harness = pack.make_async_harness(
+        FakeAsyncRuntime(),
+        caller_capabilities=("workspace.read", "shell.test", "git.read"),
+    )
+    result = asyncio.run(
+        harness.run(initial_state={"request": "inspect"}, conversation_id="c1")
+    )
+    assert result["workflow_id"] == "agent.plan.v1"
+    assert result["_authority_context"]["effective_capabilities"] == (
+        "git.read",
+        "shell.test",
+        "workspace.read",
+    )
+
+
+def test_developer_pack_executes_plan_in_core_runtime_with_fake_steps(tmp_path: Path) -> None:
+    pack = developer_profile(str(tmp_path))
+    design = pack.workflow_design()
+    embedding = ZeroEmbedding()
+    engines = (
+        GraphKnowledgeEngine(
+            persist_directory=str(tmp_path / "workflow"),
+            kg_graph_type="workflow",
+            embedding_function=embedding,
+            backend_factory=build_in_memory_backend,
+        ),
+        GraphKnowledgeEngine(
+            persist_directory=str(tmp_path / "conversation"),
+            kg_graph_type="conversation",
+            embedding_function=embedding,
+            backend_factory=build_in_memory_backend,
+        ),
+    )
+    try:
+        for node in design.nodes:
+            engines[0].write.add_node(node)
+        for edge in design.edges:
+            engines[0].write.add_edge(edge)
+
+        resolver = MappingStepResolver()
+        next_by_op = {
+            "agent.observe": "agent.plan",
+            "agent.plan": "agent.approve",
+            "agent.approve": "agent.execute",
+            "agent.execute": "agent.done",
+        }
+        for node in design.nodes:
+            operation = node.op
+
+            @resolver.register(operation)
+            def _step(ctx, operation=operation):
+                target = next_by_op.get(operation)
+                return RunSuccess(
+                    state_update=[],
+                    _route_next=[target] if target else [],
+                )
+
+        runtime = WorkflowRuntime(
+            workflow_engine=engines[0],
+            conversation_engine=engines[1],
+            step_resolver=resolver,
+            predicate_registry={
+                "approved": lambda _info, _state, _result: True,
+                "rejected": lambda _info, state, _result: state.get("approval") != "approved",
+            },
+            checkpoint_every_n_steps=1,
+        )
+        result = pack.make_harness(
+            runtime,
+            caller_capabilities=("workspace.read", "shell.test", "git.read"),
+        ).run(
+            initial_state={"_deps": {}, "approval": "approved"},
+            conversation_id="suite-runtime-smoke",
+            turn_node_id="suite-runtime-smoke-turn",
+            run_id="suite-runtime-smoke-run",
+        )
+        assert result.status == "succeeded"
+    finally:
+        pack.close()
+        for engine in engines:
+            engine.close()
+
+
 def test_acl_filters_tool_calls(tmp_path: Path) -> None:
     pack = developer_profile(str(tmp_path))
     with pytest.raises(PermissionError):
@@ -226,12 +369,13 @@ def test_acl_filters_tool_calls(tmp_path: Path) -> None:
     assert pack.tools.call(
         ToolCall("workspace.list_files", {}),
         allowed_capabilities=frozenset({"workspace.read"}),
+        acl=allow_all,
     ) == []
     with pytest.raises(PermissionError):
         pack.tools.call(
             ToolCall("workspace.list_files", {}),
             allowed_capabilities=frozenset({"workspace.read"}),
-            acl=lambda _descriptor: False,
+            acl=lambda _action, _request: False,
         )
 
 
@@ -241,7 +385,83 @@ def test_workspace_tool_rejects_escape(tmp_path: Path) -> None:
         pack.tools.call(
             ToolCall("workspace.read_text", {"relative_path": "../secret"}),
             allowed_capabilities=frozenset({"workspace.read"}),
+            acl=allow_all,
         )
+
+
+def test_custom_write_tool_requires_acl_capability_and_approval(tmp_path: Path) -> None:
+    pack = developer_profile(str(tmp_path))
+    called: list[dict[str, object]] = []
+    pack.register_tool(
+        ToolDescriptor(
+            "custom.update",
+            "Update custom resource",
+            "Mutate a custom resource.",
+            frozenset({"custom.write"}),
+            side_effect="write",
+        ),
+        lambda **kwargs: called.append(kwargs) or "updated",
+    )
+    with pytest.raises(PermissionError, match="explicit ACL"):
+        pack.tools.call(
+            ToolCall("custom.update", {"id": "r1"}),
+            allowed_capabilities=frozenset({"custom.write"}),
+        )
+    with pytest.raises(PermissionError, match="approval"):
+        pack.tools.call(
+            ToolCall("custom.update", {"id": "r1"}),
+            allowed_capabilities=frozenset({"custom.write"}),
+            acl=allow_all,
+        )
+    with pytest.raises(PermissionError, match="capabilities"):
+        pack.tools.call(
+            ToolCall("custom.update", {"id": "r1"}),
+            allowed_capabilities=frozenset(),
+            acl=allow_all,
+            approve=allow_all,
+        )
+    assert pack.tools.call(
+        ToolCall("custom.update", {"id": "r1"}),
+        allowed_capabilities=frozenset({"custom.write"}),
+        acl=allow_all,
+        approve=allow_all,
+    ) == "updated"
+    assert called == [{"id": "r1"}]
+
+
+def test_custom_write_tool_cannot_omit_capability(tmp_path: Path) -> None:
+    pack = developer_profile(str(tmp_path))
+    with pytest.raises(ValueError, match="explicit"):
+        pack.register_tool(
+            ToolDescriptor("custom.unknown", "Unknown", "Unclassified"),
+            lambda: None,
+        )
+    with pytest.raises(ValueError, match="explicit capability"):
+        pack.register_tool(
+            ToolDescriptor("custom.update", "Update", "Mutate", side_effect="write"),
+            lambda: None,
+        )
+
+
+def test_acl_is_evaluated_before_capability_and_action(tmp_path: Path) -> None:
+    pack = developer_profile(str(tmp_path))
+    called: list[str] = []
+    pack.register_tool(
+        ToolDescriptor("custom.read", "Read custom", "Read custom", frozenset({"custom.read"}), side_effect="read"),
+        lambda: called.append("action") or "ok",
+    )
+
+    def deny(action, _request):
+        called.append(action)
+        return False
+
+    with pytest.raises(PermissionError, match="ACL denied"):
+        pack.tools.call(
+            ToolCall("custom.read", {}),
+            allowed_capabilities=frozenset(),
+            acl=deny,
+        )
+    assert called == ["custom.read"]
 
 
 def test_mcp_is_descriptor_only_until_authorized() -> None:
@@ -290,28 +510,33 @@ def test_fail_closed_hook_does_not_hide_errors() -> None:
 def test_optional_adapters_are_acl_and_approval_gated() -> None:
     transport = FakeTransport()
     github = GitHubAdapter(transport, repository="example/project")
-    assert github.search_issues("bug", effective_capabilities=frozenset({"github.read"})) == ({"number": 1}, {"number": 2})
+    with pytest.raises(PermissionError, match="explicit ACL"):
+        github.search_issues("bug", effective_capabilities=frozenset({"github.read"}))
+    assert github.search_issues("bug", effective_capabilities=frozenset({"github.read"}), acl=allow_all) == ({"number": 1}, {"number": 2})
     with pytest.raises(PermissionError):
-        github.search_issues("bug", effective_capabilities=frozenset())
+        github.search_issues("bug", effective_capabilities=frozenset(), acl=allow_all)
     with pytest.raises(PermissionError):
-        github.create_issue("title", "body", effective_capabilities=frozenset({"github.write"}), approve=None)
+        github.create_issue("title", "body", effective_capabilities=frozenset({"github.write"}), acl=allow_all, approve=None)
     assert github.create_issue(
         "title",
         "body",
         effective_capabilities=frozenset({"github.write"}),
+        acl=allow_all,
         approve=lambda action, request: action == "github.create_issue" and request["repository"] == "example/project",
     )["ok"] is True
 
     browser = BrowserAdapter(lambda _url: "abcdef", max_chars=3)
-    assert browser.fetch("https://example.test", effective_capabilities=frozenset({"browser.read"})) == "abc"
+    with pytest.raises(PermissionError, match="explicit ACL"):
+        browser.fetch("https://example.test", effective_capabilities=frozenset({"browser.read"}))
+    assert browser.fetch("https://example.test", effective_capabilities=frozenset({"browser.read"}), acl=allow_all) == "abc"
     slack_client = FakeSlack()
     slack = SlackAdapter(slack_client)
-    assert slack.search("incident", effective_capabilities=frozenset({"slack.read"}))["limit"] == 20
+    assert slack.search("incident", effective_capabilities=frozenset({"slack.read"}), acl=allow_all)["limit"] == 20
     with pytest.raises(PermissionError):
-        slack.send("#ops", "hello", effective_capabilities=frozenset({"slack.write"}), approve=None)
+        slack.send("#ops", "hello", effective_capabilities=frozenset({"slack.write"}), acl=allow_all, approve=None)
 
     atlassian = AtlassianAdapter(transport, site="example.atlassian.net")
-    assert atlassian.search_jira("project = KOG", effective_capabilities=frozenset({"atlassian.read"}))["ok"] is True
+    assert atlassian.search_jira("project = KOG", effective_capabilities=frozenset({"atlassian.read"}), acl=allow_all)["ok"] is True
     llm_wiki = LlmWikiAdapter(lambda source: source, authorize=lambda _source: True)
     assert llm_wiki.descriptors()[0].capability_id == "tool:llm_wiki.ingest_skill"
 

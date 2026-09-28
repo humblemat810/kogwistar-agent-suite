@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 import math
 import re
@@ -25,6 +25,7 @@ class CapabilityDescriptor:
     required_capabilities: frozenset[str] = frozenset()
     tags: tuple[str, ...] = ()
     provider_id: str = "kogwistar-agent-suite"
+    semantic_ready: bool = False
     metadata: dict[str, str] = field(default_factory=dict)
 
     def searchable_text(self) -> str:
@@ -61,6 +62,11 @@ class CapabilityCatalog:
         if descriptor.capability_id in self._items:
             raise ValueError(f"duplicate capability: {descriptor.capability_id}")
         self._items[descriptor.capability_id] = descriptor
+
+    def set_semantic_ready(self, capability_id: str, ready: bool = True) -> None:
+        """Mark a derived semantic projection ready without changing authority."""
+
+        self._items[capability_id] = replace(self._items[capability_id], semantic_ready=ready)
 
     def search(
         self,
@@ -112,7 +118,8 @@ class CapabilityCatalog:
             )
 
         if mode == "semantic" and self.semantic_ranker is not None:
-            candidates = tuple(visible)
+            # Core semantics: ACL first, then only ready derived projections.
+            candidates = tuple(item for item in visible if item.semantic_ready)
             try:
                 scores = self.semantic_ranker(query, candidates)
                 if not isinstance(scores, Mapping):

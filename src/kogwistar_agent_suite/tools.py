@@ -5,9 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import subprocess
-from typing import Any, Callable, Mapping
+from typing import Any, Mapping
 
 from .catalog import CapabilityCatalog, CapabilityDescriptor, CapabilityKind
+from .authorization import (
+    AclResolver,
+    ApprovalResolver,
+    require_acl,
+    require_approval,
+    require_capabilities,
+)
 
 
 @dataclass(frozen=True)
@@ -16,7 +23,7 @@ class ToolDescriptor:
     name: str
     summary: str
     required_capabilities: frozenset[str] = frozenset()
-    side_effect: str = "read"
+    side_effect: str | None = None
 
     def descriptor(self) -> CapabilityDescriptor:
         return CapabilityDescriptor(
@@ -25,8 +32,8 @@ class ToolDescriptor:
             kind=CapabilityKind.TOOL,
             summary=self.summary,
             required_capabilities=self.required_capabilities,
-            tags=("tool", self.side_effect),
-            metadata={"side_effect": self.side_effect},
+            tags=("tool", self.side_effect or "unspecified"),
+            metadata={"side_effect": self.side_effect or "unspecified"},
         )
 
 
@@ -36,7 +43,7 @@ class ToolCall:
     arguments: Mapping[str, Any]
 
 
-ToolAcl = Callable[[ToolDescriptor], bool]
+ToolAcl = AclResolver
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,12 @@ class ToolRegistry:
     def register(self, descriptor: ToolDescriptor, implementation: Any) -> None:
         if descriptor.tool_id in self._tools:
             raise ValueError(f"duplicate tool: {descriptor.tool_id}")
+        if descriptor.side_effect is None:
+            raise ValueError("tool side_effect must be explicit: 'read' or 'write'")
+        if descriptor.side_effect not in {"read", "write"}:
+            raise ValueError("tool side_effect must be 'read' or 'write'")
+        if descriptor.side_effect == "write" and not descriptor.required_capabilities:
+            raise ValueError("write tool requires an explicit capability")
         self._tools[descriptor.tool_id] = descriptor, implementation
 
     def descriptor_catalog(self) -> CapabilityCatalog:
@@ -70,12 +83,22 @@ class ToolRegistry:
         *,
         allowed_capabilities: frozenset[str],
         acl: ToolAcl | None = None,
+        approve: ApprovalResolver | None = None,
     ) -> Any:
         descriptor, implementation = self._tools[call.tool_id]
-        if descriptor.required_capabilities - allowed_capabilities:
-            raise PermissionError(f"tool capability denied: {call.tool_id}")
-        if acl is not None and not acl(descriptor):
-            raise PermissionError(f"tool ACL denied: {call.tool_id}")
+        request = {
+            "tool_id": call.tool_id,
+            "arguments": dict(call.arguments),
+            "side_effect": descriptor.side_effect,
+        }
+        require_acl(action=call.tool_id, request=request, acl=acl)
+        require_capabilities(
+            descriptor.required_capabilities,
+            allowed_capabilities,
+            action=call.tool_id,
+        )
+        if descriptor.side_effect == "write":
+            require_approval(action=call.tool_id, request=request, approve=approve)
         return implementation(**dict(call.arguments))
 
 

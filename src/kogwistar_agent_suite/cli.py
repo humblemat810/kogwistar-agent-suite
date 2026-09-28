@@ -7,6 +7,7 @@ import json
 from collections.abc import Sequence
 
 from .profiles import developer_profile
+from .authorization import allow_read_only_tool
 from .tools import ToolCall
 
 
@@ -58,6 +59,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         text = pack.tools.call(
             ToolCall("workspace.read_text", {"relative_path": args.path, "max_bytes": args.max_bytes}),
             allowed_capabilities=frozenset({"workspace.read"}),
+            acl=allow_read_only_tool,
         )
         print(text, end="")
         return 0

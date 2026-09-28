@@ -22,11 +22,12 @@ rank before token matches; substring matches remain a final partial fallback.
 Capability ID is the stable tie-breaker. ACL filtering always happens before
 ranking.
 
-Hosts may inject `semantic_ranker(query, acl_visible_descriptors)` when a
+Hosts may inject `semantic_ranker(query, acl_visible_semantic_ready_descriptors)` when a
 vector or other semantic index is available. The ranker returns a mapping of
-capability ID to score. It receives only ACL-visible descriptors; missing or
-failed scores fall back to BM25. Thus semantic search is supported without
-making embeddings, Chroma, or a vendor model compulsory.
+capability ID to score. It receives only ACL-visible descriptors whose derived
+semantic projection is marked `semantic_ready`; pending or failed projections
+are excluded. Missing or failed scores fall back to BM25. Thus semantic search
+is supported without making embeddings, Chroma, or a vendor model compulsory.
 
 The agent should reveal only descriptors whose
 `required_capabilities` are present. The host may apply a stricter `acl` check.
@@ -111,7 +112,12 @@ are host concerns:
 | LLM-Wiki | authorized skill ingestion | ingestion contract only |
 
 Write methods require both an effective capability and an explicit approval
-callback. Read methods still require capabilities. `close()` is called through
+callback. Every direct tool/adapter method also requires an explicit host ACL
+resolver; omission denies before capability checks or provider transport.
+Order is ACL -> effective capability -> approval for mutation -> action. No
+implicit role is supplied. Custom tools must explicitly declare
+`side_effect="read"` or `side_effect="write"`; write values must declare a
+non-empty required-capability set. `close()` is called through
 the plugin registry when `pack.close()` runs.
 
 ## Safety boundary

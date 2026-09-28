@@ -27,3 +27,14 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+  "ci: deterministic pull-request-safe suite tests",
+]
+
+[tool.ruff]
+extend-exclude = ["pytest-cache-files-*", ".pytest*"]
+
+[tool.ruff.lint]
+# Match Kogwistar core's stable lint gate; avoid imposing unrelated style
+# migrations on this optional composition package.
+select = ["E4", "E7", "E9", "F"]

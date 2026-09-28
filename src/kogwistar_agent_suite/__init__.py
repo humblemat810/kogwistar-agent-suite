@@ -7,6 +7,7 @@ from .catalog import (
     CapabilitySearchResult,
     CapabilitySemanticRanker,
 )
+from .authorization import AclResolver, ApprovalResolver, allow_read_only_tool
 from .adapters import (
     AtlassianAdapter,
     BrowserAdapter,
@@ -25,6 +26,7 @@ from .tools import CommandResult, GitReadTool, LocalWorkspaceTool, ToolCall, Too
 
 __all__ = [
     "CapabilityCatalog", "CapabilityDescriptor", "CapabilityKind", "CapabilitySearchResult", "CapabilitySemanticRanker",
+    "AclResolver", "ApprovalResolver", "allow_read_only_tool",
     "AtlassianAdapter", "BrowserAdapter", "GitHubAdapter", "LlmWikiAdapter",
     "DeveloperPack", "HookBundle", "LocalWorkspaceTool", "McpCapability",
     "McpCatalog", "PluginManifest", "PluginRegistry", "SkillDescriptor",

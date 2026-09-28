@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from kogwistar.agent import AgentProfile, build_goal_workflow, build_plan_workflow
+from kogwistar.agent import (
+    AgentHarness,
+    AgentProfile,
+    AsyncAgentHarness,
+    build_goal_workflow,
+    build_plan_workflow,
+)
 
 from .catalog import CapabilityCatalog, CapabilitySemanticRanker
 from .adapters import OptionalAdapter, register_optional_adapter
@@ -119,6 +125,30 @@ class DeveloperPack:
             return build_goal_workflow(workflow_id="agent.goal.v1")
         raise ValueError("mode must be 'plan' or 'goal'")
 
+    def make_harness(self, workflow_runtime, *, caller_capabilities, **kwargs):
+        """Bind this composition to core's synchronous harness and ACL seam."""
+
+        return AgentHarness(
+            profile=self.agent_profile(),
+            workflow_runtime=workflow_runtime,
+            known_workflows={"agent.plan.v1", "agent.goal.v1"},
+            known_model_profiles={"default"},
+            caller_capabilities=tuple(caller_capabilities),
+            **kwargs,
+        )
+
+    def make_async_harness(self, workflow_runtime, *, caller_capabilities, **kwargs):
+        """Bind this composition to core's async-compatible harness."""
+
+        return AsyncAgentHarness(
+            profile=self.agent_profile(),
+            workflow_runtime=workflow_runtime,
+            known_workflows={"agent.plan.v1", "agent.goal.v1"},
+            known_model_profiles={"default"},
+            caller_capabilities=tuple(caller_capabilities),
+            **kwargs,
+        )
+
 
 def developer_profile(
     workspace_root: str,
@@ -135,6 +165,7 @@ def developer_profile(
             "List workspace files",
             "List bounded files below the configured workspace root.",
             frozenset({"workspace.read"}),
+            side_effect="read",
         ),
         workspace.list_files,
     )
@@ -144,6 +175,7 @@ def developer_profile(
             "Read workspace text",
             "Read bounded UTF-8 text below the configured workspace root.",
             frozenset({"workspace.read"}),
+            side_effect="read",
         ),
         workspace.read_text,
     )
@@ -153,6 +185,7 @@ def developer_profile(
             "Search workspace text",
             "Search bounded UTF-8 text below the configured workspace root.",
             frozenset({"workspace.read"}),
+            side_effect="read",
         ),
         workspace.search_text,
     )
@@ -161,7 +194,7 @@ def developer_profile(
         ("git.diff_stat", "Read Git diff stat", "Read a bounded working-tree diff summary.", git.diff_stat),
         ("git.log", "Read Git log", "Read a bounded recent commit log.", git.log),
     ):
-        tools.register(ToolDescriptor(tool_id, name, summary, frozenset({"git.read"})), implementation)
+        tools.register(ToolDescriptor(tool_id, name, summary, frozenset({"git.read"}), side_effect="read"), implementation)
     plugins = PluginRegistry()
     plugins.register(
         PluginManifest(

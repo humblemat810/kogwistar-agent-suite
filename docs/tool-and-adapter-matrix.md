@@ -17,8 +17,10 @@ features.
 | LLM-Wiki | `tool:llm_wiki.ingest_skill` | core ingestion adapter | authorized ingestion |
 
 Use `pack.search()` for one disclosure surface. Use the specific invocation
-API only after host ACL, capability, approval, budget, and provenance policy
-has been applied.
+API only after an explicit host ACL decision. Invocation then checks effective
+capability, and mutating surfaces additionally require explicit approval,
+budget, and provenance policy. Missing ACL resolver is denial, not an implicit
+role. `ToolRegistry` rejects custom write descriptors without a capability.
 
 For ranking diagnostics use `pack.search_ranked()` or CLI `--ranked`. BM25 is
 the useful no-embedding fallback. Hosts may inject a vector/semantic ranker;
