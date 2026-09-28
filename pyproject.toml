@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Installable tools, plugins, hooks, MCP descriptors, skills, and profiles for Kogwistar agents"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["kogwistar>=0.6.0"]
+dependencies = ["kogwistar>=0.6.1"]
 
 [project.scripts]
 kogwistar-agent-suite = "kogwistar_agent_suite.cli:main"
