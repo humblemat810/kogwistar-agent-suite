@@ -29,7 +29,7 @@ _MAX_USERS = 10_000
 class SlackDirectoryClient(Protocol):
     """Small Slack Web API subset used by this adapter."""
 
-    def users_list(self, **kwargs: object) -> Mapping[str, object]: ...
+    def users_list(self, **kwargs: object) -> object: ...
 
 
 class ContactPointFactory(Protocol):
@@ -188,8 +188,8 @@ class SlackContactDirectorySource(Generic[ObservationT]):
             kwargs: dict[str, object] = {"team_id": team_id, "limit": self._page_size}
             if cursor is not None:
                 kwargs["cursor"] = cursor
-            response = self._client.users_list(**kwargs)
-            if not isinstance(response, Mapping) or response.get("ok") is not True:
+            response = _response_payload(self._client.users_list(**kwargs))
+            if response.get("ok") is not True:
                 raise ValueError("Slack users.list returned an unsuccessful response")
             members = response.get("members")
             metadata = response.get("response_metadata", {})
@@ -307,6 +307,19 @@ def _requested_streams(value: object) -> tuple[str, ...]:
     if len(set(streams)) != len(streams):
         raise ValueError("source_stream_ids must be unique")
     return tuple(streams)
+
+
+def _response_payload(response: object) -> Mapping[str, object]:
+    """Read Slack SDK responses without iterating their auto-paging protocol."""
+
+    if isinstance(response, Mapping):
+        return response
+    # slack_sdk.web.slack_response.SlackResponse exposes its JSON payload as
+    # ``data``; iterating the response itself performs more network requests.
+    payload = getattr(response, "data", None)
+    if isinstance(payload, Mapping):
+        return payload
+    raise TypeError("Slack users.list returned a malformed response")
 
 
 def _authorize_directory(

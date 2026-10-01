@@ -43,6 +43,16 @@ class FakeSlackDirectory:
         return self.pages.pop(0)
 
 
+@dataclass
+class SlackSdkResponse:
+    """Mirror SlackResponse: dictionary payload on .data, not Mapping."""
+
+    data: dict[str, object]
+
+    def __iter__(self):
+        raise AssertionError("SlackResponse iteration would issue another API call")
+
+
 def _page(members: list[dict[str, object]], cursor: str = "") -> dict[str, object]:
     return {
         "ok": True,
@@ -130,6 +140,16 @@ def test_directory_reads_bounded_cursor_pages_and_returns_unverified_claims() ->
     ]
     assert [call.get("cursor") for call in client.calls] == [None, "cursor-1"]
     assert len(acl_calls) == len(stream_calls) == 2
+
+
+def test_directory_reads_slack_sdk_response_data_without_auto_pagination() -> None:
+    client = FakeSlackDirectory([SlackSdkResponse(_page([{"id": "U001"}]))])
+    source = _source(client)
+
+    (observation,) = _read(source)
+
+    assert observation.entity_id == "slack-user:T123:U001"
+    assert len(client.calls) == 1
 
 
 def test_directory_requires_capability_and_host_acl_before_network() -> None:
