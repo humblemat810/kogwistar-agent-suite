@@ -8,19 +8,30 @@ features.
 | --- | --- | --- | --- |
 | local tool | `tool:workspace.*`, `tool:git.*` | `ToolRegistry` | read |
 | custom tool | `tool:<tool_id>` | host-provided callable | descriptor-defined |
-| skill | `skill:<skill_id>` | ordinary Kogwistar workflow | policy recipe |
-| MCP | `mcp:<server>:<tool>` | authorized MCP adapter | provider-defined |
+| skill | `skill:<skill_id>` | descriptor/catalog only; host maps it to an ordinary workflow | discovery recipe |
+| MCP | `mcp:<server>:<tool>` | descriptor/catalog only; host supplies authorized MCP client | provider-defined |
 | GitHub | `tool:github.*` | injected transport | write approval for issue creation |
 | Browser | `tool:browser.fetch_text` | injected fetcher | read |
 | Slack | `tool:slack.*` | injected client | write approval for send |
 | Atlassian | `tool:atlassian.*` | injected transport | read |
 | LLM-Wiki | `tool:llm_wiki.ingest_skill` | core ingestion adapter | authorized ingestion |
 
-Use `pack.search()` for one disclosure surface. Use the specific invocation
-API only after an explicit host ACL decision. Invocation then checks effective
-capability, and mutating surfaces additionally require explicit approval,
-budget, and provenance policy. Missing ACL resolver is denial, not an implicit
-role. `ToolRegistry` rejects custom write descriptors without a capability.
+`DeveloperPack` registries and catalog are process-local composition state;
+they do not persist descriptors to a Kogwistar backend. `pack.search()` is a
+discovery API, not an invocation API. Registering a skill only publishes its
+descriptor and steps; it does not execute those steps, materialize a workflow,
+or persist the skill. Registering MCP only publishes a descriptor; it does not
+connect to or invoke an MCP server. A host must resolve discovery results to an
+ordinary Kogwistar workflow or an explicitly configured client.
+
+Direct `ToolRegistry.call()` and external adapter methods require a supplied
+ACL resolver and effective capabilities before action. Write tools/adapters
+also require the explicit approval callback implemented for that action.
+Missing ACL resolver is denial, not an implicit role. `ToolRegistry` rejects
+custom write descriptors without a capability. The suite itself does not
+provide a universal invocation pipeline, persistent ACL decisions, budget
+accounting, or provenance recording; the host/runtime must compose those
+policies around the adapter action.
 
 For ranking diagnostics use `pack.search_ranked()` or CLI `--ranked`. BM25 is
 the useful no-embedding fallback. Hosts may inject a vector/semantic ranker;

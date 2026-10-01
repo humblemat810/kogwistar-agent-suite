@@ -23,7 +23,9 @@ compression, memory, knowledge, wisdom, and durable skill projections.
   Registration rejects an omitted side effect or empty write capability set.
 - LLM-Wiki ingestion returns core `SkillGraphArtifact`; persistence belongs to
   core projection stores, not this suite.
-- Catalog search is progressive disclosure: ACL filtering precedes ranking.
+- Catalog search is progressive disclosure: required-capability filtering
+  always precedes ranking; a supplied host ACL callback also filters before
+  ranking. Search without that callback is not an ACL/tenant visibility boundary.
 - Semantic ranking sees only `semantic_ready` derived projections. Pending or
   failed embeddings fall back to deterministic BM25/lexical search.
 
