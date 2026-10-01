@@ -163,6 +163,26 @@ def test_slack_history_requires_explicit_success_response() -> None:
         )
 
 
+def test_slack_history_does_not_call_next_channel_with_zero_limit() -> None:
+    slack = Slack(
+        [
+            {"ok": True, "messages": [{"ts": "1.0", "text": "one"}]},
+        ]
+    )
+    source = _source(slack)
+    events = source.read_window(
+        "workspace-a",
+        "recipient-a",
+        ("slack:workspace-a:C123:messages", "slack:workspace-a:C456:messages"),
+        datetime.fromtimestamp(0, UTC),
+        datetime.fromtimestamp(2, UTC),
+        1,
+    )
+
+    assert len(events) == 1
+    assert len(slack.calls) == 1
+
+
 def test_slack_history_follows_bounded_cursors() -> None:
     slack = Slack(
         [

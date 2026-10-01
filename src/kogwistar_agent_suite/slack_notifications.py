@@ -119,6 +119,8 @@ class SlackNotificationSource:
             raise ValueError("source IDs do not match configured Slack channels")
         events: list[object] = []
         for source_id in source_ids:
+            if len(events) >= max_events:
+                break
             channel_id = self._channel_for_source(workspace_id, source_id)
             cursor: str | None = None
             seen_cursors: set[str] = set()
