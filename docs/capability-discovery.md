@@ -110,7 +110,7 @@ are host concerns:
 | --- | --- | --- |
 | GitHub | issue search | issue creation, approval required |
 | Browser | bounded page text | none |
-| Slack | message search | send, approval required |
+| Slack | message search, notification source | send, approval required; source reads require `slack.read` and host ACL |
 | Atlassian | Jira/Confluence search | none |
 | LLM-Wiki | authorized skill ingestion | ingestion contract only |
 
