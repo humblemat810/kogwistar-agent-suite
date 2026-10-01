@@ -158,8 +158,9 @@ def test_slack_contact_source_registers_with_generic_host_contact_book() -> None
                         },
                     }
                 ]
-            )
+            ),
         ]
+        * 2
     )
     source = _source(client)
     registered: dict[str, object] = {}
@@ -200,9 +201,26 @@ def test_slack_contact_source_registers_with_generic_host_contact_book() -> None
     owns_stream = registered["owns_stream"]
     authorize_stream = registered["authorize_stream"]
     provider = registered["provider"]
-    assert callable(owns_stream) and callable(authorize_stream) and callable(provider)
+    scan_provider = registered["scan_provider"]
+    assert (
+        callable(owns_stream)
+        and callable(authorize_stream)
+        and callable(provider)
+        and callable(scan_provider)
+    )
     assert owns_stream("workspace-a", "slack:T123:directory") is True
     assert authorize_stream("workspace-a", "slack:T123:directory") is True
+    scan_observations = scan_provider(
+        "workspace-a",
+        {
+            "workspace_id": "workspace-a",
+            "source_stream_ids": ("email:mailbox-a",),
+            "observation_limit": 10,
+        },
+        lambda workspace, stream: authorize_stream(workspace, stream),
+    )
+    assert len(scan_observations) == 1
+    assert scan_observations[0].entity_id == "slack-user:T123:U009"
     observations = provider(
         "workspace-a",
         10,
@@ -214,6 +232,8 @@ def test_slack_contact_source_registers_with_generic_host_contact_book() -> None
         point.value for point in observations[0].contact_points
     }
     assert acl_calls == [
+        ("slack.contact_directory.read", "slack:T123:directory"),
+        ("slack.contact_directory.read", "slack:T123:directory"),
         ("slack.contact_directory.read", "slack:T123:directory"),
         ("slack.contact_directory.read", "slack:T123:directory"),
     ]

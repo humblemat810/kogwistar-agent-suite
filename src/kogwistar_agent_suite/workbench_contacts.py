@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TypeVar
 
 from .authorization import AclResolver
@@ -74,11 +74,24 @@ def register_slack_contact_source(
             raise ValueError("Slack contact source exceeded host observation limit")
         return observations
 
+    def provide_for_scan(
+        workspace_id: str,
+        payload: Mapping[str, object],
+        stream_authorizer: Callable[[str, str], bool],
+    ) -> Sequence[ObservationT]:
+        if not isinstance(payload, Mapping) or payload.get("workspace_id") != workspace_id:
+            raise ValueError("Slack contact scan payload must match workspace")
+        limit = payload.get("observation_limit", 250)
+        if type(limit) is not int or limit < 1:
+            raise ValueError("Slack contact scan observation_limit must be positive")
+        return provide(workspace_id, limit, stream_authorizer)
+
     register(
         source_id,
         provider=provide,
         owns_stream=owns_stream,
         authorize_stream=authorize_stream,
+        scan_provider=provide_for_scan,
     )
 
 
