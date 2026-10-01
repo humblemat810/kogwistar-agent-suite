@@ -13,6 +13,7 @@ features.
 | GitHub | `tool:github.*` | injected transport | write approval for issue creation |
 | Browser | `tool:browser.fetch_text` | injected fetcher | read |
 | Slack | `tool:slack.*` | injected client | write approval for send |
+| Slack notifications | `source:slack.*` | host `NotificationSourceCollection` | read; host owns digest/outbox |
 | Atlassian | `tool:atlassian.*` | injected transport | read |
 | LLM-Wiki | `tool:llm_wiki.ingest_skill` | core ingestion adapter | authorized ingestion |
 
@@ -32,6 +33,13 @@ custom write descriptors without a capability. The suite itself does not
 provide a universal invocation pipeline, persistent ACL decisions, budget
 accounting, or provenance recording; the host/runtime must compose those
 policies around the adapter action.
+
+`SlackNotificationSource` is an optional message-source adapter. It reads only
+explicitly bound channels through injected `conversations_history`, rechecks
+ACL around every provider call, applies a bounded time window and event count,
+and emits host `NotificationEvent` values through a supplied factory. It does
+not send messages, group digests, persist cursors, or write the graph. The host
+can compose it with the email plugin through `NotificationSourceCollection`.
 
 For ranking diagnostics use `pack.search_ranked()` or CLI `--ranked`. BM25 is
 the useful no-embedding fallback. Hosts may inject a vector/semantic ranker;

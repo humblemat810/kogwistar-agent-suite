@@ -85,6 +85,14 @@ contact-observation types; the suite imports no LLM-Wiki contact classes and
 never persists or merges identities. See
 [`docs/slack-contact-directory.md`](docs/slack-contact-directory.md).
 
+The optional `SlackNotificationSource` reads bounded history from explicitly
+bound Slack channels and emits host notification events through an injected
+factory. It requires `slack.read` and an explicit ACL resolver checked before
+and after each provider call. It does not own digest grouping, outbox state,
+cursor persistence, graph writes, or message sending; the host may compose its
+events with the email plugin's events through its generic notification-source
+contract.
+
 The adapters accept injected clients, so deterministic tests and deployments
 may use an internal gateway or local fake without installing a vendor SDK.
 No adapter is auto-discovered or compulsory. LLM-Wiki integration reuses the
