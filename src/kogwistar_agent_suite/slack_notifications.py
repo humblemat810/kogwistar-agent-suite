@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any, Protocol
 
 from .authorization import require_acl, require_capabilities
+from .catalog import CapabilityDescriptor, CapabilityKind
 
 _SLACK_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _MAX_CHANNELS = 1_000
@@ -82,6 +83,21 @@ class SlackNotificationSource:
     def list_sources(self, workspace_id: str, _recipient_id: str) -> tuple[str, ...]:
         channels = self._channels(workspace_id)
         return tuple(self._source_id(workspace_id, channel) for channel in channels)
+
+    def descriptors(self) -> tuple[CapabilityDescriptor, ...]:
+        """Describe source discovery; descriptor is not invocation authority."""
+
+        return (
+            CapabilityDescriptor(
+                capability_id="source:slack.notifications",
+                name="Slack notification source",
+                kind=CapabilityKind.TOOL,
+                summary="Read bounded Slack channel events for host notification composition.",
+                required_capabilities=frozenset({"slack.read"}),
+                tags=("adapter", "notification-source", "slack", "read"),
+                metadata={"side_effect": "read", "execution": "host_notification_contract"},
+            ),
+        )
 
     def read_window(
         self,

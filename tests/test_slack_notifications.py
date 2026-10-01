@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import pytest
 
 from kogwistar_agent_suite import SlackNotificationSource
+from kogwistar_agent_suite import CapabilityCatalog
 
 pytestmark = pytest.mark.ci
 
@@ -81,6 +82,15 @@ def test_slack_history_maps_to_bounded_host_events() -> None:
     assert events[0].dedupe_key == "slack:C123:1700000000.0"
     assert slack.calls[0]["oldest"] == "1699999999.0"
     assert slack.calls[0]["latest"] == "1700000001.0"
+
+
+def test_slack_notification_source_is_searchable_but_not_invocation_authority() -> None:
+    source = _source(Slack([]))
+    catalog = CapabilityCatalog(source.descriptors())
+
+    result = catalog.search("Slack notification events", allowed_capabilities=frozenset({"slack.read"}))
+
+    assert [item.capability_id for item in result] == ["source:slack.notifications"]
 
 
 def test_slack_history_rechecks_acl_after_each_read() -> None:
