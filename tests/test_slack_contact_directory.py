@@ -139,7 +139,7 @@ def test_directory_reads_bounded_cursor_pages_and_returns_unverified_claims() ->
         ("phone", "+14155550100", "claimed"),
     ]
     assert [call.get("cursor") for call in client.calls] == [None, "cursor-1"]
-    assert len(acl_calls) == len(stream_calls) == 2
+    assert len(acl_calls) == len(stream_calls) == 4
 
 
 def test_directory_reads_slack_sdk_response_data_without_auto_pagination() -> None:
@@ -186,6 +186,27 @@ def test_directory_authorizes_stream_before_read_and_rechecks_after_read() -> No
 
     with pytest.raises(PermissionError, match="authorization was revoked"):
         _read(source, authorize_stream=revoked)
+    assert len(client.calls) == 1
+
+
+def test_directory_stops_before_next_page_when_acl_is_revoked_mid_scan() -> None:
+    client = FakeSlackDirectory(
+        [
+            _page([{"id": "U001"}], "cursor-1"),
+            _page([{"id": "U002"}]),
+        ]
+    )
+    source = _source(client)
+    checks = 0
+
+    def revoke_before_second_page(_workspace: str, _stream: str) -> bool:
+        nonlocal checks
+        checks += 1
+        return checks < 3
+
+    with pytest.raises(PermissionError, match="authorization was revoked"):
+        _read(source, authorize_stream=revoke_before_second_page)
+
     assert len(client.calls) == 1
 
 

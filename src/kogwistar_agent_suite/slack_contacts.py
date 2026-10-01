@@ -158,15 +158,14 @@ class SlackContactDirectorySource(Generic[ObservationT]):
             "source_id": stream_id,
             "side_effect": "read",
         }
-        _authorize_directory(request, effective_capabilities, acl)
-        if authorize_stream(workspace_id, stream_id) is not True:
-            raise PermissionError("Slack directory source is not authorized")
 
-        users = self._read_users(team_id)
-        # Recheck both host/resource policy and source policy after network I/O.
-        _authorize_directory(request, effective_capabilities, acl)
-        if authorize_stream(workspace_id, stream_id) is not True:
-            raise PermissionError("Slack directory source authorization was revoked")
+        def authorize_page(*, after_read: bool = False) -> None:
+            _authorize_directory(request, effective_capabilities, acl)
+            if authorize_stream(workspace_id, stream_id) is not True:
+                reason = "authorization was revoked" if after_read else "is not authorized"
+                raise PermissionError(f"Slack directory source {reason}")
+
+        users = self._read_users(team_id, authorize_page=authorize_page)
 
         observed_at_ms = self._clock_ms()
         if type(observed_at_ms) is not int or observed_at_ms < 0:
@@ -180,15 +179,22 @@ class SlackContactDirectorySource(Generic[ObservationT]):
             )
         return tuple(observations)
 
-    def _read_users(self, team_id: str) -> tuple[Mapping[str, object], ...]:
+    def _read_users(
+        self, team_id: str, *, authorize_page: Callable[..., None]
+    ) -> tuple[Mapping[str, object], ...]:
         users: dict[str, Mapping[str, object]] = {}
         seen_cursors: set[str] = set()
         cursor: str | None = None
+        has_read_page = False
         for page_number in range(self._max_pages):
+            authorize_page(after_read=has_read_page)
             kwargs: dict[str, object] = {"team_id": team_id, "limit": self._page_size}
             if cursor is not None:
                 kwargs["cursor"] = cursor
             response = _response_payload(self._client.users_list(**kwargs))
+            # A revoked stream must not trigger another request or be consumed.
+            authorize_page(after_read=True)
+            has_read_page = True
             if response.get("ok") is not True:
                 raise ValueError("Slack users.list returned an unsuccessful response")
             members = response.get("members")
