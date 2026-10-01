@@ -127,6 +127,13 @@ class SlackContactDirectorySource(Generic[ObservationT]):
             ),
         )
 
+    def stream_id_for_workspace(self, workspace_id: str) -> str | None:
+        """Return this adapter's stable directory stream for a configured host workspace."""
+        if not isinstance(workspace_id, str) or not workspace_id.strip():
+            raise ValueError("workspace_id must be non-empty")
+        team_id = self._workspaces.get(workspace_id)
+        return f"slack:{team_id}:directory" if team_id is not None else None
+
     def list_observations(
         self,
         workspace_id: str,

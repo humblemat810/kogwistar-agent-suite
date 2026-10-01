@@ -23,6 +23,7 @@ from .slack_contacts import (
     SlackContactDirectorySource,
     SlackDirectoryClient,
 )
+from .workbench_contacts import register_slack_contact_source
 from .hooks import HookBundle, run_hooks
 from .mcp import McpCapability, McpCatalog
 from .plugins import PluginManifest, PluginRegistry
@@ -39,5 +40,5 @@ __all__ = [
     "CommandResult", "GitReadTool", "ToolCall", "ToolDescriptor", "ToolRegistry", "developer_profile",
     "developer_skills", "run_hooks", "SlackAdapter", "adapter_descriptors",
     "register_optional_adapter", "ContactObservationFactory", "ContactPointFactory",
-    "SlackContactDirectorySource", "SlackDirectoryClient",
+    "SlackContactDirectorySource", "SlackDirectoryClient", "register_slack_contact_source",
 ]

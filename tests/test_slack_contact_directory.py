@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from kogwistar_agent_suite import SlackContactDirectorySource
+from kogwistar_agent_suite import SlackContactDirectorySource, register_slack_contact_source
 from kogwistar_agent_suite.catalog import CapabilityCatalog
 from kogwistar_agent_suite.adapters import adapter_descriptors
 
@@ -140,6 +140,83 @@ def test_directory_reads_bounded_cursor_pages_and_returns_unverified_claims() ->
     ]
     assert [call.get("cursor") for call in client.calls] == [None, "cursor-1"]
     assert len(acl_calls) == len(stream_calls) == 4
+
+
+def test_slack_contact_source_registers_with_generic_host_contact_book() -> None:
+    client = FakeSlackDirectory(
+        [
+            _page(
+                [
+                    {
+                        "id": "U009",
+                        "team_id": "T123",
+                        "deleted": False,
+                        "is_bot": False,
+                        "profile": {
+                            "real_name": "Taylor Example",
+                            "email": "taylor@example.test",
+                        },
+                    }
+                ]
+            )
+        ]
+    )
+    source = _source(client)
+    registered: dict[str, object] = {}
+
+    def register(source_id, **kwargs):
+        registered["source_id"] = source_id
+        registered.update(kwargs)
+
+    def authorize_resource(workspace, kind, resource, action):
+        return (workspace, kind, resource, action) == (
+            "workspace-a",
+            "slack_contact_directory",
+            "slack:T123:directory",
+            "read",
+        )
+
+    host = type(
+        "FakeWorkbenchApi",
+        (),
+        {
+            "register_contact_observation_source": staticmethod(register),
+            "authorize_resource": staticmethod(authorize_resource),
+        },
+    )()
+    acl_calls = []
+
+    def acl(action, request):
+        acl_calls.append((action, request["source_id"]))
+        return action == "slack.contact_directory.read"
+
+    register_slack_contact_source(
+        host,
+        source,
+        effective_capabilities=lambda _workspace: frozenset({"slack.read"}),
+        acl=acl,
+    )
+    assert registered["source_id"] == "slack"
+    owns_stream = registered["owns_stream"]
+    authorize_stream = registered["authorize_stream"]
+    provider = registered["provider"]
+    assert callable(owns_stream) and callable(authorize_stream) and callable(provider)
+    assert owns_stream("workspace-a", "slack:T123:directory") is True
+    assert authorize_stream("workspace-a", "slack:T123:directory") is True
+    observations = provider(
+        "workspace-a",
+        10,
+        lambda workspace, stream: authorize_stream(workspace, stream),
+    )
+    assert len(observations) == 1
+    assert observations[0].entity_id == "slack-user:T123:U009"
+    assert "taylor@example.test" in {
+        point.value for point in observations[0].contact_points
+    }
+    assert acl_calls == [
+        ("slack.contact_directory.read", "slack:T123:directory"),
+        ("slack.contact_directory.read", "slack:T123:directory"),
+    ]
 
 
 def test_directory_reads_slack_sdk_response_data_without_auto_pagination() -> None:
