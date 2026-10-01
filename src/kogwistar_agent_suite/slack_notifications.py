@@ -120,31 +120,51 @@ class SlackNotificationSource:
         events: list[object] = []
         for source_id in source_ids:
             channel_id = self._channel_for_source(workspace_id, source_id)
-            request = {
-                "workspace_id": workspace_id,
-                "recipient_id": recipient_id,
-                "source_id": source_id,
-                "channel_id": channel_id,
-                "oldest": str(window_start.timestamp()),
-                "latest": str(window_end.timestamp()),
-                "limit": min(max_events - len(events), self._max_events),
-            }
-            require_capabilities(frozenset({"slack.read"}), self._capabilities, action="slack.notifications.read")
-            require_acl(action="slack.notifications.read", request=request, acl=self._acl)
-            response = self._client.conversations_history(**request)
-            require_acl(action="slack.notifications.read", request=request, acl=self._acl)
-            payload = _response_data(response)
-            raw_messages = payload.get("messages")
-            if not isinstance(raw_messages, list):
-                raise TypeError("Slack history returned malformed messages")
-            if payload.get("has_more") is True and len(events) + len(raw_messages) >= max_events:
-                raise ValueError("Slack history exceeds notification event bound")
-            for message in raw_messages:
-                if not isinstance(message, Mapping):
-                    raise TypeError("Slack history contains malformed message")
-                events.append(self._event(workspace_id, source_id, channel_id, message))
-                if len(events) > max_events:
+            cursor: str | None = None
+            seen_cursors: set[str] = set()
+            while True:
+                request = {
+                    "workspace_id": workspace_id,
+                    "recipient_id": recipient_id,
+                    "source_id": source_id,
+                    "channel_id": channel_id,
+                    "oldest": str(window_start.timestamp()),
+                    "latest": str(window_end.timestamp()),
+                    "limit": min(max_events - len(events), self._max_events),
+                }
+                if cursor is not None:
+                    request["cursor"] = cursor
+                require_capabilities(
+                    frozenset({"slack.read"}),
+                    self._capabilities,
+                    action="slack.notifications.read",
+                )
+                require_acl(action="slack.notifications.read", request=request, acl=self._acl)
+                response = self._client.conversations_history(**request)
+                require_acl(action="slack.notifications.read", request=request, acl=self._acl)
+                payload = _response_data(response)
+                raw_messages = payload.get("messages")
+                if not isinstance(raw_messages, list):
+                    raise TypeError("Slack history returned malformed messages")
+                for message in raw_messages:
+                    if not isinstance(message, Mapping):
+                        raise TypeError("Slack history contains malformed message")
+                    events.append(self._event(workspace_id, source_id, channel_id, message))
+                    if len(events) > max_events:
+                        raise ValueError("Slack history exceeds notification event bound")
+                if payload.get("has_more") is not True:
+                    break
+                if len(events) >= max_events:
                     raise ValueError("Slack history exceeds notification event bound")
+                metadata = payload.get("response_metadata")
+                next_cursor = metadata.get("next_cursor") if isinstance(metadata, Mapping) else None
+                if not isinstance(next_cursor, str) or not next_cursor.strip():
+                    raise ValueError("Slack history has_more response lacks a cursor")
+                next_cursor = next_cursor.strip()
+                if next_cursor in seen_cursors or next_cursor == cursor:
+                    raise ValueError("Slack history pagination cursor repeated")
+                seen_cursors.add(next_cursor)
+                cursor = next_cursor
         return tuple(events)
 
     def _channels(self, workspace_id: str) -> tuple[str, ...]:

@@ -122,6 +122,7 @@ def test_slack_history_rejects_pagination_beyond_bound() -> None:
                 {
                     "ok": True,
                     "has_more": True,
+                    "response_metadata": {"next_cursor": "next"},
                     "messages": [{"ts": "1.0", "text": "one"}],
                 }
             )
@@ -142,3 +143,42 @@ def test_slack_history_rejects_pagination_beyond_bound() -> None:
             datetime.fromtimestamp(2, UTC),
             1,
         )
+
+
+def test_slack_history_follows_bounded_cursors() -> None:
+    slack = Slack(
+        [
+            Response(
+                {
+                    "ok": True,
+                    "has_more": True,
+                    "response_metadata": {"next_cursor": "next"},
+                    "messages": [{"ts": "1.0", "text": "one"}],
+                }
+            ),
+            Response(
+                {
+                    "ok": True,
+                    "has_more": False,
+                    "messages": [{"ts": "1.1", "text": "two"}],
+                }
+            ),
+        ]
+    )
+    source = SlackNotificationSource(
+        client=slack,
+        workspaces={"workspace-a": ("C123",)},
+        event_factory=Event,
+        acl=lambda _action, _request: True,
+    )
+    events = source.read_window(
+        "workspace-a",
+        "recipient-a",
+        ("slack:workspace-a:C123:messages",),
+        datetime.fromtimestamp(0, UTC),
+        datetime.fromtimestamp(2, UTC),
+        2,
+    )
+
+    assert [event.title for event in events] == ["one", "two"]
+    assert slack.calls[1]["cursor"] == "next"
