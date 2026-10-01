@@ -77,6 +77,14 @@ pip install -e ".[slack]"
 pip install -e ".[atlassian]"
 ```
 
+The optional `SlackContactDirectorySource` reads an explicitly bound Slack
+workspace directory as unverified contact claims. It requires `slack.read`, an
+explicit host ACL resolver, and a per-source ACL check before and after the
+bounded cursor scan. Host-provided factories construct the host's generic
+contact-observation types; the suite imports no LLM-Wiki contact classes and
+never persists or merges identities. See
+[`docs/slack-contact-directory.md`](docs/slack-contact-directory.md).
+
 The adapters accept injected clients, so deterministic tests and deployments
 may use an internal gateway or local fake without installing a vendor SDK.
 No adapter is auto-discovered or compulsory. LLM-Wiki integration reuses the
