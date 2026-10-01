@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .pytest-tmp-suite/
 .test/
+logs/
 .ruff_cache/
 .venv/
 dist/
