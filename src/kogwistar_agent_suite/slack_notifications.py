@@ -209,7 +209,7 @@ class SlackNotificationSource:
 
 def _response_data(response: object) -> Mapping[str, object]:
     data = getattr(response, "data", response)
-    if not isinstance(data, Mapping) or data.get("ok") is False:
+    if not isinstance(data, Mapping) or data.get("ok") is not True:
         raise ValueError("Slack history returned an unsuccessful response")
     return data
 

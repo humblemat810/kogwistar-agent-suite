@@ -145,6 +145,24 @@ def test_slack_history_rejects_pagination_beyond_bound() -> None:
         )
 
 
+def test_slack_history_requires_explicit_success_response() -> None:
+    source = SlackNotificationSource(
+        client=Slack([{"messages": []}]),
+        workspaces={"workspace-a": ("C123",)},
+        event_factory=Event,
+        acl=lambda _action, _request: True,
+    )
+    with pytest.raises(ValueError, match="unsuccessful response"):
+        source.read_window(
+            "workspace-a",
+            "recipient-a",
+            ("slack:workspace-a:C123:messages",),
+            datetime.fromtimestamp(0, UTC),
+            datetime.fromtimestamp(1, UTC),
+            10,
+        )
+
+
 def test_slack_history_follows_bounded_cursors() -> None:
     slack = Slack(
         [
