@@ -19,20 +19,23 @@ Search supports deterministic `lexical`, `bm25`, and `semantic` modes. The
 suite has no mandatory embedding dependency, so `semantic` falls back to BM25
 rather than pretending lexical data was vector-ranked. Exact and prefix hits
 rank before token matches; substring matches remain a final partial fallback.
-Capability ID is the stable tie-breaker. ACL filtering always happens before
-ranking.
+Capability ID is the stable tie-breaker. Required-capability filtering always
+happens before ranking; a supplied host ACL callback also filters before
+ranking. Without that callback, search is not an ACL visibility boundary.
 
-Hosts may inject `semantic_ranker(query, acl_visible_semantic_ready_descriptors)` when a
+Hosts may inject `semantic_ranker(query, visible_semantic_ready_descriptors)` when a
 vector or other semantic index is available. The ranker returns a mapping of
-capability ID to score. It receives only ACL-visible descriptors whose derived
-semantic projection is marked `semantic_ready`; pending or failed projections
-are excluded. Missing or failed scores fall back to BM25. Thus semantic search
+capability ID to score. It receives descriptors that passed the required-
+capability filter and, when supplied, the host ACL callback; it receives only
+derived projections marked `semantic_ready`, excluding pending or failed
+projections. Missing or failed scores fall back to BM25. Thus semantic search
 is supported without making embeddings, Chroma, or a vendor model compulsory.
 
-The agent should reveal only descriptors whose
-`required_capabilities` are present. The host may apply a stricter `acl` check.
-The returned descriptor is a proposal for discovery, not proof that invocation
-is allowed.
+Required-capability filtering always applies. The host ACL callback is optional
+for catalog discovery; when omitted, search is not an ACL or tenant-isolation
+boundary and may reveal any descriptor allowed by the capability filter. Supply
+the host ACL callback whenever descriptor visibility is scoped. The returned
+descriptor is a discovery result, never proof that invocation is allowed.
 
 `pack.search_ranked()` additionally returns `score` and `match`, useful for
 Hermes-style progressive disclosure. The CLI equivalent is:
@@ -107,7 +110,7 @@ are host concerns:
 | --- | --- | --- |
 | GitHub | issue search | issue creation, approval required |
 | Browser | bounded page text | none |
-| Slack | message search | send, approval required |
+| Slack | message search, notification source | send, approval required; source reads require `slack.read` and host ACL |
 | Atlassian | Jira/Confluence search | none |
 | LLM-Wiki | authorized skill ingestion | ingestion contract only |
 

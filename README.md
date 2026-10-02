@@ -77,6 +77,22 @@ pip install -e ".[slack]"
 pip install -e ".[atlassian]"
 ```
 
+The optional `SlackContactDirectorySource` reads an explicitly bound Slack
+workspace directory as unverified contact claims. It requires `slack.read`, an
+explicit host ACL resolver, and a per-source ACL check before and after the
+bounded cursor scan. Host-provided factories construct the host's generic
+contact-observation types; the suite imports no LLM-Wiki contact classes and
+never persists or merges identities. See
+[`docs/slack-contact-directory.md`](docs/slack-contact-directory.md).
+
+The optional `SlackNotificationSource` reads bounded history from explicitly
+bound Slack channels and emits host notification events through an injected
+factory. It requires `slack.read` and an explicit ACL resolver checked before
+and after each provider call. It does not own digest grouping, outbox state,
+cursor persistence, graph writes, or message sending; the host may compose its
+events with the email plugin's events through its generic notification-source
+contract.
+
 The adapters accept injected clients, so deterministic tests and deployments
 may use an internal gateway or local fake without installing a vendor SDK.
 No adapter is auto-discovered or compulsory. LLM-Wiki integration reuses the
@@ -84,3 +100,18 @@ core provider-neutral ingestion contract and remains optional.
 
 Detailed contracts: [`docs/capability-discovery.md`](docs/capability-discovery.md)
 and [`docs/tool-and-adapter-matrix.md`](docs/tool-and-adapter-matrix.md).
+
+## Current implementation boundary
+
+The suite is usable as a deterministic, optional composition layer today. Its
+adapter tests use injected clients, so they verify ACL-before-action ordering,
+capability checks, approval gates, bounds, and cleanup without contacting
+external services. They do not certify vendor API compatibility, OAuth/token
+refresh, or production delivery behavior.
+
+Durable skill/MCP catalog projections, embedding readiness and recovery,
+workflow materialization/execution, budgets, provenance, outbox/digest
+delivery, and cross-channel identity decisions remain Kogwistar or host
+concerns. No SMS/phone/IM connector, automatic contact merge, or universal
+external-action dispatcher is included. Add each as an explicit optional
+adapter and host contract rather than expanding the core suite implicitly.
