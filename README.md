@@ -100,3 +100,18 @@ core provider-neutral ingestion contract and remains optional.
 
 Detailed contracts: [`docs/capability-discovery.md`](docs/capability-discovery.md)
 and [`docs/tool-and-adapter-matrix.md`](docs/tool-and-adapter-matrix.md).
+
+## Current implementation boundary
+
+The suite is usable as a deterministic, optional composition layer today. Its
+adapter tests use injected clients, so they verify ACL-before-action ordering,
+capability checks, approval gates, bounds, and cleanup without contacting
+external services. They do not certify vendor API compatibility, OAuth/token
+refresh, or production delivery behavior.
+
+Durable skill/MCP catalog projections, embedding readiness and recovery,
+workflow materialization/execution, budgets, provenance, outbox/digest
+delivery, and cross-channel identity decisions remain Kogwistar or host
+concerns. No SMS/phone/IM connector, automatic contact merge, or universal
+external-action dispatcher is included. Add each as an explicit optional
+adapter and host contract rather than expanding the core suite implicitly.

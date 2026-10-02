@@ -17,6 +17,29 @@ features.
 | Atlassian | `tool:atlassian.*` | injected transport | read |
 | LLM-Wiki | `tool:llm_wiki.ingest_skill` | core ingestion adapter | authorized ingestion |
 
+## Implementation status
+
+The table above describes callable composition surfaces, not production
+readiness of every provider. The current status is:
+
+| Surface | Current proof | Not included in this package |
+| --- | --- | --- |
+| Local tools, skills, MCP descriptors | deterministic unit tests | durable catalog, workflow materialization, or MCP invocation |
+| GitHub, Browser, Slack, Atlassian | injected-client fake tests; ACL/approval checked before transport | vendor SDK lifecycle, credential/OAuth refresh, live-service reliability |
+| LLM-Wiki ingestion | deterministic graph-artifact test | parser hosting, durable projection, approval, or execution |
+| Semantic catalog ranking | deterministic BM25 fallback and injected-ranker tests | Chroma/pgvector ownership, embedding jobs, readiness persistence, recovery |
+| Slack notifications | bounded fake-source and ACL tests | digest grouping, outbox, cursors, delivery, cross-channel identity |
+
+No phone, SMS, or generic instant-message connector is shipped here. Such a
+connector belongs in its own optional adapter and must emit the host's generic
+source/event contract. This package also does not provide automatic contact
+merging, universal action dispatch, persistent ACL decisions, budget
+accounting, or provenance storage; these remain host/core responsibilities.
+
+All adapter tests use injected fakes. They prove ordering, bounds,
+fail-closed authorization, and descriptor behavior only; they do not claim
+that a real vendor endpoint, credential flow, or durable backend has passed.
+
 `DeveloperPack` registries and catalog are process-local composition state;
 they do not persist descriptors to a Kogwistar backend. `pack.search()` is a
 discovery API, not an invocation API. Registering a skill only publishes its
