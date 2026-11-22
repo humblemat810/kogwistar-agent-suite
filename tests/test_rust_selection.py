@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
 
 from kogwistar_agent_suite import developer_profile
@@ -30,12 +32,19 @@ def test_seam_overrides_are_preserved(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.ci
-def test_rust_mode_requires_native_extension(tmp_path) -> None:
-    with pytest.raises(RuntimeError, match="_rust extension is required"):
-        developer_profile(str(tmp_path), implementation="rust")
+def test_rust_mode_selection_respects_native_extension_availability(tmp_path) -> None:
+    native_available = (
+        importlib.util.find_spec("kogwistar_agent_suite._rust") is not None
+    )
+    if native_available:
+        pack = developer_profile(str(tmp_path), implementation="rust")
+        assert pack.implementation == "rust"
+    else:
+        with pytest.raises(RuntimeError, match="_rust extension is required"):
+            developer_profile(str(tmp_path), implementation="rust")
 
 
 @pytest.mark.ci
-def test_python_profile_removes_available(tmp_path) -> None:
+def test_python_profile_remains_available(tmp_path) -> None:
     pack = developer_profile(str(tmp_path))
     assert pack.implementation == "python"
