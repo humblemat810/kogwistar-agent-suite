@@ -1,5 +1,7 @@
 """Concrete Kogwistar agent integrations."""
 
+__version__ = "0.2.0"
+
 from .catalog import (
     CapabilityCatalog,
     CapabilityDescriptor,
@@ -28,6 +30,8 @@ from .workbench_contacts import register_slack_contact_source
 from .hooks import HookBundle, run_hooks
 from .mcp import McpCapability, McpCatalog
 from .plugins import PluginManifest, PluginRegistry
+from .implementation_selection import Implementation, SuiteSeam, SuiteSelection, selection_from_env, selected_implementation
+from .errors import SuiteImplementationUnavailable
 from .profiles import DeveloperPack, developer_profile
 from .skills import SkillDescriptor, developer_skills
 from .tools import CommandResult, GitReadTool, LocalWorkspaceTool, ToolCall, ToolDescriptor, ToolRegistry
@@ -43,4 +47,6 @@ __all__ = [
     "register_optional_adapter", "ContactObservationFactory", "ContactPointFactory",
     "SlackContactDirectorySource", "SlackDirectoryClient", "register_slack_contact_source",
     "NotificationEventFactory", "SlackMessageClient", "SlackNotificationSource",
+    "Implementation", "SuiteSeam", "SuiteSelection", "selection_from_env",
+    "selected_implementation", "SuiteImplementationUnavailable",
 ]

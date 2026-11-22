@@ -1,14 +1,14 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
 
 [project]
 name = "kogwistar-agent-suite"
-version = "0.1.0"
+version = "0.2.0"
 description = "Installable tools, plugins, hooks, MCP descriptors, skills, and profiles for Kogwistar agents"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["kogwistar>=0.6.1"]
+dependencies = ["kogwistar>=0.7.1"]
 
 [project.scripts]
 kogwistar-agent-suite = "kogwistar_agent_suite.cli:main"
@@ -23,6 +23,12 @@ all-adapters = ["httpx>=0.28", "playwright>=1.45,<2", "slack-sdk>=3.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.maturin]
+manifest-path = "rust/crates/kogwistar-agent-suite-python/Cargo.toml"
+module-name = "kogwistar_agent_suite._rust"
+python-source = "src"
+bindings = "pyo3"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

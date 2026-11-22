@@ -19,6 +19,12 @@ features.
 
 ## Implementation status
 
+The suite now also carries an explicit Rust parity path. The current native
+surface covers catalog search, bounded workspace reads, Git status, and the
+core runtime port. It is enabled only by `KOGWISTAR_AGENT_IMPL_MODE=rust`, a
+seam override, or `developer_profile(..., implementation="rust")`; missing
+native code fails closed. See [`docs/rust-parity.md`](rust-parity.md).
+
 The table above describes callable composition surfaces, not production
 readiness of every provider. The current status is:
 

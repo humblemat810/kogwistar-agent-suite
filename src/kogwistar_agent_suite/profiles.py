@@ -19,6 +19,8 @@ from .mcp import McpCapability
 from .plugins import PluginManifest, PluginRegistry
 from .skills import SkillDescriptor, developer_skills
 from .tools import GitReadTool, LocalWorkspaceTool, ToolDescriptor, ToolRegistry
+from .implementation_selection import Implementation, SuiteSeam, SuiteSelection, selection_from_env
+from .errors import SuiteImplementationUnavailable
 
 
 @dataclass
@@ -28,6 +30,7 @@ class DeveloperPack:
     plugins: PluginRegistry
     skills: tuple[SkillDescriptor, ...]
     hooks: tuple[HookBundle, ...]
+    implementation: Implementation = "python"
 
     def _ensure_capability_available(self, capability_id: str) -> None:
         try:
@@ -46,6 +49,40 @@ class DeveloperPack:
         limit: int = 20,
     ):
         """Search every installed tool, MCP descriptor, skill, and adapter."""
+
+        selected = self.implementation
+        if selected != "python":
+            from ._rust_bridge import RustAgentSuiteExtension
+            from dataclasses import asdict
+
+            extension = RustAgentSuiteExtension()
+            descriptors = [
+                asdict(result.descriptor)
+                for result in self.catalog.search_ranked(
+                    query,
+                    allowed_capabilities=allowed_capabilities,
+                    acl=acl,
+                    mode="lexical",
+                    limit=self.catalog.len() if hasattr(self.catalog, "len") else 1000,
+                )
+            ]
+            results = extension.search(
+                descriptors,
+                query=query,
+                allowed_capabilities=allowed_capabilities,
+                mode=mode,
+                limit=limit,
+            )
+            from .catalog import CapabilitySearchResult
+
+            return tuple(
+                CapabilitySearchResult(
+                    descriptor=self.catalog.get(result["descriptor"]["capability_id"]),
+                    score=result["score"],
+                    match=result["match"],
+                )
+                for result in results
+            )
 
         return self.catalog.search(
             query,
@@ -155,6 +192,8 @@ def developer_profile(
     adapters: tuple[OptionalAdapter, ...] = (),
     *,
     semantic_ranker: CapabilitySemanticRanker | None = None,
+    implementation: Implementation | None = None,
+    seams: dict[SuiteSeam, Implementation] | None = None,
 ) -> DeveloperPack:
     workspace = LocalWorkspaceTool(workspace_root)
     git = GitReadTool(workspace_root)
@@ -189,12 +228,12 @@ def developer_profile(
         ),
         workspace.search_text,
     )
-    for tool_id, name, summary, implementation in (
+    for tool_id, name, summary, tool_implementation in (
         ("git.status", "Read Git status", "Read branch and working-tree status without mutation.", git.status),
         ("git.diff_stat", "Read Git diff stat", "Read a bounded working-tree diff summary.", git.diff_stat),
         ("git.log", "Read Git log", "Read a bounded recent commit log.", git.log),
     ):
-        tools.register(ToolDescriptor(tool_id, name, summary, frozenset({"git.read"}), side_effect="read"), implementation)
+        tools.register(ToolDescriptor(tool_id, name, summary, frozenset({"git.read"}), side_effect="read"), tool_implementation)
     plugins = PluginRegistry()
     plugins.register(
         PluginManifest(
@@ -207,7 +246,27 @@ def developer_profile(
     catalog = CapabilityCatalog(tools.descriptor_catalog().descriptors(), semantic_ranker=semantic_ranker)
     for skill in skills:
         catalog.add(skill.descriptor())
-    pack = DeveloperPack(tools, catalog, plugins, skills, ())
+    selected = SuiteSelection(
+        mode=implementation if implementation is not None else selection_from_env().mode,
+        seams=seams,
+    )
+    if selected.mode not in {"python", "rust", "shadow"}:
+        raise ValueError("implementation must be python, rust, or shadow")
+    if selected.mode != "python":
+        try:
+            from ._rust_bridge import RustAgentSuiteExtension
+
+            RustAgentSuiteExtension()
+        except SuiteImplementationUnavailable as error:
+            raise error
+    pack = DeveloperPack(
+        tools=tools,
+        catalog=catalog,
+        plugins=plugins,
+        skills=skills,
+        hooks=(),
+        implementation=selected.mode,
+    )
     for adapter in adapters:
         pack.register_adapter(adapter)
     return pack
