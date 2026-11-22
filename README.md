@@ -33,6 +33,18 @@ inspection, workflow design, capability discovery, citation-preserving
 research, and isolated vision delegation. Skills are descriptors and policy
 recipes; execution remains ordinary Kogwistar workflow composition.
 
+## Whispered Coding Agent
+
+The optional `agent` extra composes `kogwistar-agent` with Kogwistar's whisper
+sidecar. A bounded graph-backed sidecar can inject scoped documentation and
+code hints before each model call while the main agent plans a coding task:
+
+```text
+pip install -e ".[agent]"
+```
+
+See [`docs/agent-whisper-use-case.md`](docs/agent-whisper-use-case.md).
+
 ## Capability Discovery
 
 The suite can run selected seams through a native Rust implementation. Python
