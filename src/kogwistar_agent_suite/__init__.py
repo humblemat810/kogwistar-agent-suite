@@ -35,6 +35,11 @@ from .errors import SuiteImplementationUnavailable
 from .profiles import DeveloperPack, developer_profile
 from .skills import SkillDescriptor, developer_skills
 from .tools import CommandResult, GitReadTool, LocalWorkspaceTool, ToolCall, ToolDescriptor, ToolRegistry
+from .agent_use_cases import (
+    WhisperedCodingProvider,
+    WhisperedCodingResult,
+    run_whispered_coding_use_case,
+)
 
 __all__ = [
     "CapabilityCatalog", "CapabilityDescriptor", "CapabilityKind", "CapabilitySearchResult", "CapabilitySemanticRanker",
@@ -49,4 +54,5 @@ __all__ = [
     "NotificationEventFactory", "SlackMessageClient", "SlackNotificationSource",
     "Implementation", "SuiteSeam", "SuiteSelection", "selection_from_env",
     "selected_implementation", "SuiteImplementationUnavailable",
+    "WhisperedCodingProvider", "WhisperedCodingResult", "run_whispered_coding_use_case",
 ]
