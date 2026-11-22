@@ -15,7 +15,6 @@ kogwistar-agent-suite = "kogwistar_agent_suite.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
-agent = ["kogwistar-agent @ git+https://github.com/humblemat810/kogwistar-agent.git@f222bcdcb67ec611dd383c34ea1d16bf7d5707c5"]
 github = ["httpx>=0.28"]
 browser = ["playwright>=1.45,<2"]
 slack = ["slack-sdk>=3.0"]
