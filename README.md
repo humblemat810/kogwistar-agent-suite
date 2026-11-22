@@ -35,6 +35,22 @@ recipes; execution remains ordinary Kogwistar workflow composition.
 
 ## Capability Discovery
 
+The suite can run selected seams through a native Rust implementation. Python
+remains the safe default. Selection is explicit and does not fall back silently:
+
+```text
+KOGWISTAR_AGENT_IMPL_MODE=rust kogwistar-agent-suite --workspace . profile
+```
+
+Per-seam overrides use `KOGWISTAR_AGENT_IMPL_CATALOG`,
+`KOGWISTAR_AGENT_IMPL_TOOLS`, `KOGWISTAR_AGENT_IMPL_RUNTIME`,
+`KOGWISTAR_AGENT_IMPL_ADAPTERS`, and `KOGWISTAR_AGENT_IMPL_HOOKS`. A Rust
+selection requires the native `kogwistar_agent_suite._rust` extension.
+The Rust runtime seam delegates native step execution and durable transition
+reduction to the `kogwistar-runtime` crate from Kogwistar core v0.7.1.
+See [`docs/rust-parity.md`](docs/rust-parity.md) for the current native
+surface, build commands, and parity boundary.
+
 All installed capabilities share one searchable catalog. Results are filtered
 before disclosure by required capabilities and an optional host ACL callback:
 

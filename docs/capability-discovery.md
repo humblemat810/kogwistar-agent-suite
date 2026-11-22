@@ -47,6 +47,12 @@ kogwistar-agent-suite --workspace . search "github issue" \
 
 ## Runtime registration
 
+The capability catalog is available in both Python and Rust implementations.
+Python remains the default. Rust selection is explicit and fail-closed; see
+[`docs/rust-parity.md`](rust-parity.md). In both paths, descriptor filtering is
+not invocation authority: ACL, effective capabilities, and mutation approval
+remain checked at the execution seam.
+
 Use `DeveloperPack` registration methods, not direct mutation:
 
 | Method | Adds to searchable catalog | Grants execution |
