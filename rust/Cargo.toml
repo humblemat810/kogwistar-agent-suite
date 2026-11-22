@@ -1,0 +1,20 @@
+[workspace]
+members = [
+    "crates/kogwistar-agent-suite",
+    "crates/kogwistar-agent-suite-python",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.83"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip", "raw_value", "arbitrary_precision"] }
+regex = "1"
+thiserror = "2"
+pyo3 = { version = "0.29", features = ["extension-module", "abi3-py312", "generate-import-lib"] }
+kogwistar-runtime = { git = "https://github.com/humblemat810/kogwistar.git", tag = "v0.7.1" }

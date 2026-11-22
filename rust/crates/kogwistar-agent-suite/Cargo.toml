@@ -1,0 +1,21 @@
+[package]
+name = "kogwistar-agent-suite"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+kogwistar-runtime.workspace = true
+
+[lib]
+name = "kogwistar_agent_suite"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kogwistar-agent-suite"
+path = "src/bin/agent_suite.rs"
